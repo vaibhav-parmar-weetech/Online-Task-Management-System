@@ -28,7 +28,7 @@ public class TaskController {
 
     @PutMapping("/editTask/{taskId}")
     public ResponseEntity<?> editTask(@PathVariable Long taskId, @RequestBody EditTaskDto editTaskDto){
-        // method updated
+        // method updated - 1
         return taskService.editTask(taskId,editTaskDto);
     }
 
