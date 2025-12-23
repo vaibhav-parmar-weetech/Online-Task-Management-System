@@ -3,6 +3,7 @@ package com.example.Online_Task_Management_System.service;
 import com.example.Online_Task_Management_System.audit.Auditable;
 import com.example.Online_Task_Management_System.dto.request.*;
 import com.example.Online_Task_Management_System.dto.response.PageResponse;
+import com.example.Online_Task_Management_System.dto.response.TaskCommentSummaryDto;
 import com.example.Online_Task_Management_System.dto.response.TaskResponseDto;
 import com.example.Online_Task_Management_System.dto.response.UserSummaryDto;
 import com.example.Online_Task_Management_System.entity.Task;
@@ -383,6 +384,15 @@ public class TaskServiceImpl implements TaskService{
             response.setCreatedBy(createdBy);
         }
 
+        List<TaskCommentSummaryDto> comments = task.getComments().stream()
+                .map(cmt ->{
+                    TaskCommentSummaryDto dto = new TaskCommentSummaryDto();
+                    dto.setComment(cmt.getComment());
+                    dto.setCreatedAt(cmt.getCreatedAt());
+                    dto.setId(cmt.getId());
+                    return dto;
+                }).collect(Collectors.toList());
+
         Set<UserSummaryDto> users = task.getUsers().stream()
                 .map(user -> {
                     UserSummaryDto dto = new UserSummaryDto();
@@ -392,7 +402,7 @@ public class TaskServiceImpl implements TaskService{
                     return dto;
                 })
                 .collect(Collectors.toSet());
-
+        response.setComments(comments);
         response.setAssignedUsers(users);
         return response;
     }

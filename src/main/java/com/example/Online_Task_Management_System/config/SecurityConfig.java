@@ -83,7 +83,11 @@ public class SecurityConfig {
                                 "/api/users/all-employee"
                         ).hasAnyAuthority("ROLE_Admin", "ROLE_Manager")
 
+                        .requestMatchers(HttpMethod.POST, "/api/tasks/comment/**")
+                        .hasAuthority("ROLE_Employee")
 
+                        .requestMatchers(HttpMethod.GET,"/api/tasks/comment/**")
+                        .hasAnyAuthority("ROLE_Admin","ROLE_Manager")
 
                         //  TASKS (ADMIN + MANAGER)
                         .requestMatchers(
@@ -93,7 +97,8 @@ public class SecurityConfig {
                                 "/api/tasks/*/assign",
                                 "/api/tasks/view-task/**",
                                 "/api/tasks/v1/view-all-task/**",
-                                "/api/tasks/v2/view-all-task/**"
+                                "/api/tasks/v2/view-all-task/**",
+                                "/api/tasks/comment/**"
                         ).hasAnyAuthority("ROLE_Admin", "ROLE_Manager")
 
                         // TASKS (EMPLOYEE)
@@ -101,8 +106,7 @@ public class SecurityConfig {
                                 "/api/tasks/v1/EMP/view-all-task",
                                 "/api/tasks/v2/EMP/view-all-task",
                                 "/api/tasks/my-task/**",
-                                "/api/tasks/update-task/**"
-                        ).hasAuthority("ROLE_Employee")
+                                "/api/tasks/update-task/**").hasAuthority("ROLE_Employee")
 
                         .anyRequest().authenticated()
                 )
