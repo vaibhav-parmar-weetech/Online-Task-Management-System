@@ -75,6 +75,9 @@ public class SecurityConfig {
                                 "/api/users/all-manager"
                         ).hasAuthority("ROLE_Admin")
 
+                        .requestMatchers(HttpMethod.GET, "/api/users/view-logs/**")
+                        .hasAuthority("ROLE_Admin")
+
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/users/all-employee"
