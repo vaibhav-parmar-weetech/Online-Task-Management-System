@@ -45,7 +45,7 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody @Valid RegisterRequestDto request) {
-        // resolve register error
+        //develop
        return userService.registerUser(request);
     }
 
