@@ -6,9 +6,7 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 @Entity
 public class Task {
@@ -34,6 +32,21 @@ public class Task {
     @JoinColumn(name = "created_by")
     private Users createdBy;
 
+    @OneToMany(
+            mappedBy = "task",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
+    private List<TaskComments> comments = new ArrayList<>();
+
+    public List<TaskComments> getComments() {
+        return comments;
+    }
+
+    public void setComments(List<TaskComments> comments) {
+        this.comments = comments;
+    }
+
     public Users getCreatedBy() {
         return createdBy;
     }
@@ -43,7 +56,7 @@ public class Task {
     }
 
 
-    public Task(Long id, String title, LocalDateTime dueDate, TaskStatus taskStatus, LocalDateTime createdAt, Set<Users> users, Users createdBy) {
+    public Task(Long id, String title, LocalDateTime dueDate, TaskStatus taskStatus, LocalDateTime createdAt, Set<Users> users, Users createdBy, List<TaskComments> comments) {
         this.id = id;
         this.title = title;
         this.dueDate = dueDate;
@@ -51,6 +64,7 @@ public class Task {
         this.createdAt = createdAt;
         this.users = users;
         this.createdBy = createdBy;
+        this.comments = comments;
     }
 
     public Task() {

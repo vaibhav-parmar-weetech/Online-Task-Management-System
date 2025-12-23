@@ -2,8 +2,10 @@ package com.example.Online_Task_Management_System.controller;
 
 import com.example.Online_Task_Management_System.dto.request.*;
 import com.example.Online_Task_Management_System.dto.response.PageResponse;
+import com.example.Online_Task_Management_System.dto.response.TaskCommentResponseDto;
 import com.example.Online_Task_Management_System.dto.response.TaskResponseDto;
 import com.example.Online_Task_Management_System.enums.TaskStatus;
+import com.example.Online_Task_Management_System.service.TaskCommentService;
 import com.example.Online_Task_Management_System.service.TaskService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @RestController()
 @RequestMapping("/api/tasks")
@@ -20,6 +23,9 @@ public class TaskController {
 
     @Autowired
     TaskService taskService;
+
+    @Autowired
+    TaskCommentService taskCommentService;
 
     @PostMapping("/add-task")
     public ResponseEntity<?> createTask(@RequestBody TaskRequestDto taskRequestDto){
@@ -101,5 +107,21 @@ public class TaskController {
     public ResponseEntity<?> updateStatus(@PathVariable Long taskId, @RequestBody TaskUpdateDto taskUpdateDto){
         return taskService.updateTaskStatus(taskId,taskUpdateDto);
     }
+
+    @PostMapping("/comment/{taskId}")
+    public ResponseEntity<?> addComment(@PathVariable Long taskId,
+                                        @RequestBody TaskCommentRequestDto dto){
+        return taskCommentService.addComment(taskId,dto);
+    }
+
+    @GetMapping("/comment/{taskId}")
+    public ResponseEntity<List<TaskCommentResponseDto>> getComments(
+            @PathVariable Long taskId) {
+
+        return ResponseEntity.ok(
+                taskCommentService.getComments(taskId)
+        );
+    }
+
 
 }
