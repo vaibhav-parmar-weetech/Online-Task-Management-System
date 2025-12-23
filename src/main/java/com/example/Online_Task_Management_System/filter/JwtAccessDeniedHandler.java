@@ -22,12 +22,12 @@ public class JwtAccessDeniedHandler implements AccessDeniedHandler {
         response.setContentType("application/json");
 
         response.getWriter().write("""
-        {
-          "status": 401,
-          "error": "Unauthorized",
-          "message": "You are not authorized to access this resource"
-        }
-        """);
+                {
+                  "status": 401,
+                  "error": "Unauthorized",
+                  "message": "You are not authorized to access this resource"
+                }
+                """);
     }
 }
 
