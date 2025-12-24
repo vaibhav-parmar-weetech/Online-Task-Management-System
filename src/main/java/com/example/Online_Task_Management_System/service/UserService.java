@@ -32,4 +32,8 @@ public interface UserService {
     ResponseEntity<?> getAllEmployee(int page, int size);
 
     ResponseEntity<?> getAllManager(int page, int size);
+
+    ResponseEntity<?> verifyEmail(String token);
+
+    ResponseEntity<?> resendVerificationEmail(String email);
 }
