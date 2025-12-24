@@ -11,4 +11,6 @@ import java.util.Optional;
 @Repository
 public interface TaskCommentRepository extends JpaRepository<TaskComments,Long> {
     List<TaskComments> findByTaskOrderByCreatedAtAsc(Task task);
+
+    int deleteByTaskId(Long taskId);
 }

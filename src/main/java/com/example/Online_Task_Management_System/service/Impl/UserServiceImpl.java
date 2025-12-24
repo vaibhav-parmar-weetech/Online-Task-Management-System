@@ -1,4 +1,4 @@
-package com.example.Online_Task_Management_System.service;
+package com.example.Online_Task_Management_System.service.Impl;
 
 
 import com.example.Online_Task_Management_System.dto.request.ForgotPasswordDto;
@@ -11,6 +11,10 @@ import com.example.Online_Task_Management_System.entity.Users;
 import com.example.Online_Task_Management_System.enums.Roles;
 import com.example.Online_Task_Management_System.repository.TaskRepository;
 import com.example.Online_Task_Management_System.repository.UserRepository;
+import com.example.Online_Task_Management_System.service.AuditLogService;
+import com.example.Online_Task_Management_System.service.notifications.EmailService;
+import com.example.Online_Task_Management_System.service.JwtService;
+import com.example.Online_Task_Management_System.service.UserService;
 import io.jsonwebtoken.Claims;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

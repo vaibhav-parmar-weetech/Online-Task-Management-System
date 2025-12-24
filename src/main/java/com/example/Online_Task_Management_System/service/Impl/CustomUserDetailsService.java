@@ -1,4 +1,4 @@
-package com.example.Online_Task_Management_System.service;
+package com.example.Online_Task_Management_System.service.Impl;
 
 import com.example.Online_Task_Management_System.repository.UserRepository;
 import org.springframework.security.core.Authentication;

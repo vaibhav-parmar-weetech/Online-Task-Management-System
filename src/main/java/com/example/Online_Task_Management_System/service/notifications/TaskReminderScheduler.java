@@ -1,10 +1,10 @@
-package com.example.Online_Task_Management_System.service;
+package com.example.Online_Task_Management_System.service.notifications;
 
 import com.example.Online_Task_Management_System.dto.request.TaskNotificationDto;
 import com.example.Online_Task_Management_System.entity.Task;
 import com.example.Online_Task_Management_System.entity.Users;
-import com.example.Online_Task_Management_System.enums.TaskStatus;
 import com.example.Online_Task_Management_System.repository.TaskRepository;
+import com.example.Online_Task_Management_System.service.Impl.UserServiceImpl;
 import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

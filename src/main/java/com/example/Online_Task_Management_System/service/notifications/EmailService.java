@@ -1,4 +1,4 @@
-package com.example.Online_Task_Management_System.service;
+package com.example.Online_Task_Management_System.service.notifications;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mail.SimpleMailMessage;

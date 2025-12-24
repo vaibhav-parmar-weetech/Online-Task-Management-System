@@ -1,19 +1,24 @@
-package com.example.Online_Task_Management_System.service;
+package com.example.Online_Task_Management_System.service.Impl;
 
-import com.example.Online_Task_Management_System.audit.Auditable;
 import com.example.Online_Task_Management_System.dto.request.*;
 import com.example.Online_Task_Management_System.dto.response.PageResponse;
 import com.example.Online_Task_Management_System.dto.response.TaskCommentSummaryDto;
 import com.example.Online_Task_Management_System.dto.response.TaskResponseDto;
 import com.example.Online_Task_Management_System.dto.response.UserSummaryDto;
 import com.example.Online_Task_Management_System.entity.Task;
+import com.example.Online_Task_Management_System.entity.TaskFile;
 import com.example.Online_Task_Management_System.entity.Users;
 import com.example.Online_Task_Management_System.enums.Roles;
 import com.example.Online_Task_Management_System.enums.TaskStatus;
+import com.example.Online_Task_Management_System.repository.TaskCommentRepository;
+import com.example.Online_Task_Management_System.repository.TaskFileRepository;
 import com.example.Online_Task_Management_System.repository.TaskRepository;
 import com.example.Online_Task_Management_System.repository.UserRepository;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import com.example.Online_Task_Management_System.service.AuditLogService;
+import com.example.Online_Task_Management_System.service.TaskFileService;
+import com.example.Online_Task_Management_System.service.notifications.NotificationService;
+import com.example.Online_Task_Management_System.service.TaskService;
+import com.example.Online_Task_Management_System.service.notifications.WebSocketNotificationService;
 import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +29,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -32,13 +36,16 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
-public class TaskServiceImpl implements TaskService{
+public class TaskServiceImpl implements TaskService {
 
     @Autowired
     UserRepository userRepository;
@@ -48,6 +55,12 @@ public class TaskServiceImpl implements TaskService{
 
     @Autowired
     AuditLogService auditLogService;
+
+    @Autowired
+    TaskFileRepository taskFileRepository;
+
+    @Autowired
+    TaskCommentRepository taskCommentRepository;
 
 
     private static final Logger log = LoggerFactory.getLogger(TaskServiceImpl.class);
@@ -305,47 +318,73 @@ public class TaskServiceImpl implements TaskService{
     @Override
     @Transactional
     public ResponseEntity<?> deleteTask(Long taskId) {
-        try {
-            Users loggedInUser = getLoggedInUser();
 
-            Optional<Task> oldTask = taskRepository.findById(taskId);
+        Users loggedInUser = getLoggedInUser();
 
-            // Checking task is exist or not...
-            if(oldTask.isEmpty()){
-                log.warn("Task Deletion failed (Task not found) | taskId={}", taskId);
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status",404,"message", "Task Not Found.."));
-            }
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> {
+                    log.warn("Task Deletion failed (Task not found) | taskId={}", taskId);
+                    return new ResponseStatusException(
+                            HttpStatus.NOT_FOUND, "Task Not Found");
+                });
 
-            Task task = oldTask.get();
+        // MANAGER permission check
+        if (loggedInUser.hasRole(Roles.Manager) &&
+                !task.getCreatedBy().getId().equals(loggedInUser.getId())) {
 
-            if (loggedInUser.hasRole(Roles.valueOf("Manager")) &&
-                    !task.getCreatedBy().getId().equals(loggedInUser.getId())) {
-                log.warn("Task Deletion failed | taskId={}", taskId);
-                return new ResponseEntity<>(Map.of("status", 401,
-                        "error", "Unauthorized",
-                        "message","You are not authorized to access this resource"),HttpStatus.UNAUTHORIZED);
-            }
+            log.warn("Unauthorized Task Delete | taskId={} | userId={}",
+                    taskId, loggedInUser.getId());
 
-            // break many-to-many relationship
-            task.getUsers().forEach(user -> user.getTasks().remove(task));
-            task.getUsers().clear();
-
-            taskRepository.delete(task);
-            auditLogService.log(
-                    "DELETE_TASK",
-                    "Task deleted",
-                    "Task",
-                    taskId
-            );
-            log.info("Task Deleted | taskId={}", taskId);
-
-            return ResponseEntity.status(HttpStatus.OK).body(Map.of("status",200,"message", "Task Deleted Successfully.."));
-        }catch (Exception e){
-            return ResponseEntity
-                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("status",500,"message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of(
+                            "status", 401,
+                            "error", "Unauthorized",
+                            "message", "You are not authorized to access this resource"
+                    ));
         }
+
+        //  DELETE COMMENTS
+        int commentCount = taskCommentRepository.deleteByTaskId(taskId);
+        log.info("Deleted {} comments | taskId={}", commentCount, taskId);
+
+        //  DELETE FILES
+        List<TaskFile> files = taskFileRepository.findByTaskId(taskId);
+
+        for (TaskFile file : files) {
+            try {
+                Path path = Paths.get(file.getFilePath());
+                Files.deleteIfExists(path);
+                log.info("Deleted task file | fileId={} | name={}",
+                        file.getId(), file.getOriginalFileName());
+            } catch (IOException e) {
+                log.error("Failed to delete file from disk | fileId={}", file.getId(), e);
+                throw new ResponseStatusException(
+                        HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Failed to delete task files");
+            }
+        }
+        taskFileRepository.deleteAll(files);
+
+        task.getUsers().forEach(user -> user.getTasks().remove(task));
+        task.getUsers().clear();
+
+        taskRepository.delete(task);
+
+        auditLogService.log(
+                "DELETE_TASK",
+                "Task deleted with files & comments",
+                "Task",
+                taskId
+        );
+
+        log.info("Task Deleted Successfully | taskId={}", taskId);
+
+        return ResponseEntity.ok(
+                Map.of("status", 200, "message", "Task Deleted Successfully"));
     }
+
+
+
 
     @Override
     public ResponseEntity<?> getTask(Long taskId) {
