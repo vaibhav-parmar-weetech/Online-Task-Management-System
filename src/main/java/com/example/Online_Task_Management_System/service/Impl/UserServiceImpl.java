@@ -8,9 +8,11 @@ import com.example.Online_Task_Management_System.dto.request.UpdateProfileReqDto
 import com.example.Online_Task_Management_System.dto.response.*;
 import com.example.Online_Task_Management_System.entity.Task;
 import com.example.Online_Task_Management_System.entity.Users;
+import com.example.Online_Task_Management_System.entity.VerificationToken;
 import com.example.Online_Task_Management_System.enums.Roles;
 import com.example.Online_Task_Management_System.repository.TaskRepository;
 import com.example.Online_Task_Management_System.repository.UserRepository;
+import com.example.Online_Task_Management_System.repository.VerificationTokenRepository;
 import com.example.Online_Task_Management_System.service.AuditLogService;
 import com.example.Online_Task_Management_System.service.notifications.EmailService;
 import com.example.Online_Task_Management_System.service.JwtService;
@@ -19,6 +21,7 @@ import io.jsonwebtoken.Claims;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.graphql.GraphQlProperties;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -27,6 +30,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
@@ -37,9 +41,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 public class UserServiceImpl implements UserService {
@@ -66,6 +73,9 @@ public class UserServiceImpl implements UserService {
     @Autowired
     EmailService emailService;
 
+    @Autowired
+    VerificationTokenRepository tokenRepository;
+
 
     @Override
     public ResponseEntity<?> registerUser(RegisterRequestDto user) {
@@ -75,13 +85,13 @@ public class UserServiceImpl implements UserService {
             if (userRepository.existsByEmail(user.getEmail())) {
                 log.warn("User creation failed | email already exists={}", user.getEmail());
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(Map.of("status", 400,"message", "email already exists"));
+                        .body(Map.of("status", 400, "message", "email already exists"));
             }
 
-            if(user.getPassword().length() < 6){
+            if (user.getPassword().length() < 6) {
                 log.warn("User creation failed | Password length Must be 6 | email={}", user.getEmail());
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(Map.of("status", 400,"message", "Password length Must be 6 characters.."));
+                        .body(Map.of("status", 400, "message", "Password length Must be 6 characters.."));
             }
             Users nwUser = new Users();
             nwUser.setName(user.getName());
@@ -91,6 +101,7 @@ public class UserServiceImpl implements UserService {
 
             Users saved = userRepository.save(nwUser);
 
+            createVerificationToken(saved);
             auditLogService.log(
                     "CREATE_USER",
                     "User registered: " + user.getEmail(),
@@ -104,74 +115,90 @@ public class UserServiceImpl implements UserService {
                     saved.getRoles()
             );
 
-            RegisterResponseDto response = new RegisterResponseDto(
-                    saved.getId(), saved.getName(), saved.getEmail(), saved.getRoles());
-
             return ResponseEntity.ok(
                     Map.of("status", 201, "message", "User Added successfully")
             );
 
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("status", 500,"message", e.getMessage()));
+                    .body(Map.of("status", 500, "message", e.getMessage()));
         }
     }
+
+    @Transactional
+    public void createVerificationToken(Users user) {
+
+        // delete old token if exists
+        tokenRepository.deleteByUser(user);
+
+        String token = UUID.randomUUID().toString();
+
+        VerificationToken verificationToken = new VerificationToken(
+                token,
+                user,
+                LocalDateTime.now().plusHours(24)
+        );
+
+        tokenRepository.save(verificationToken);
+
+        String link = "http://localhost:8080/auth/verify?token=" + token;
+
+        emailService.sendHtmlEmail(
+                "vaibhav@weetechsolution.com",  // user.getEmail(),
+                "Verify your account",
+                buildVerificationEmail(user, link)
+        );
+    }
+
 
     @Override
     public ResponseEntity<?> loginUser(LoginRequestDto request) {
         try {
-            log.info("User login request received | email={}", request.getEmail());
+            log.info("User login request | email={}", request.getEmail());
+
             authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
                             request.getEmail(), request.getPassword()
                     )
             );
-            var user = userRepository.findByEmail(request.getEmail())
+
+            Users user = userRepository.findByEmail(request.getEmail())
                     .orElseThrow();
 
             String token = jwtService.generateToken(user);
+
             auditLogService.log(
                     "LOGIN_SUCCESS",
                     "User logged in successfully",
                     "Users",
                     user.getId()
             );
-            log.info(
-                    "User Login successfully | userId={} | email={} | role={}",
-                    user.getId(),
-                    user.getEmail(),
-                    user.getRoles()
+
+            return ResponseEntity.ok(
+                    new LoginResponseDto(token, "Login Successful")
             );
 
-
-            return ResponseEntity.status(HttpStatus.OK)
-                    .body(new LoginResponseDto(token, "Login Successful"));
-
+        } catch (DisabledException ex) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of(
+                            "status", 401,
+                            "message", "Please verify your email first"
+                    ));
         } catch (BadCredentialsException ex) {
-            log.warn(
-                    "User Login Failed (Invalid email or password) | email={} ",
-                    request.getEmail()
-            );
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("status", 401,"message", "Invalid email or password"));
-
+                    .body(Map.of(
+                            "status", 401,
+                            "message", "Invalid email or password"
+                    ));
         } catch (AuthenticationException ex) {
-            auditLogService.log(
-                    "LOGIN_FAILED",
-                    "Authentication failed",
-                    "Users",
-                    Long.valueOf(-1)
-            );
-            log.warn(
-                    "User Login Failed (Authentication failed) | email={} ",
-                    request.getEmail()
-            );
-
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("status", 401,"message", "Authentication failed"));
+                    .body(Map.of(
+                            "status", 401,
+                            "message", "Authentication failed"
+                    ));
         }
     }
+
 
     @Override
     public ResponseEntity<?> getProfile() {
@@ -181,7 +208,7 @@ public class UserServiceImpl implements UserService {
         String email = authentication.getName();
         Optional<Users> byEmail = userRepository.findByEmail(email);
         if (byEmail.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(Map.of("status", 404,"message", "User Not Found"));
+                .body(Map.of("status", 404, "message", "User Not Found"));
         Users users = byEmail.get();
         ProfileResponseDto response = new ProfileResponseDto();
         response.setId(users.getId());
@@ -203,14 +230,14 @@ public class UserServiceImpl implements UserService {
 
         Optional<Users> optionalUsers = userRepository.findByEmail(email);
         if (optionalUsers.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(Map.of("status", 404,"message", "User Not Found"));
+                .body(Map.of("status", 404, "message", "User Not Found"));
 
         Users users = optionalUsers.get();
 
-        if(reqDto.getPassword().length() < 6){
+        if (reqDto.getPassword().length() < 6) {
             log.warn("User creation failed | Password length Must be 6 | email={}", reqDto.getEmail());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("status", 400,"message", "Password length Must be 6 characters.."));
+                    .body(Map.of("status", 400, "message", "Password length Must be 6 characters.."));
         }
 
 
@@ -239,10 +266,10 @@ public class UserServiceImpl implements UserService {
                 "Users",
                 users.getId()
         );
-        log.info("User Profile Updated | UserId={} | Changes = {}",users.getId(),changes.toString());
+        log.info("User Profile Updated | UserId={} | Changes = {}", users.getId(), changes.toString());
 
         return ResponseEntity.status(HttpStatus.OK)
-                .body(Map.of("status", 200,"message", "Updated Successfully.."));
+                .body(Map.of("status", 200, "message", "Updated Successfully.."));
     }
 
 
@@ -295,7 +322,7 @@ public class UserServiceImpl implements UserService {
 
         Optional<Users> optionalUsers = userRepository.findById(userId);
         if (optionalUsers.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(Map.of("status", 404,"message", "User Not Found"));
+                .body(Map.of("status", 404, "message", "User Not Found"));
 
         Users user = optionalUsers.get();
         for (Task task : user.getTasks()) {
@@ -325,7 +352,7 @@ public class UserServiceImpl implements UserService {
         );
 
         return ResponseEntity.status(HttpStatus.OK)
-                .body(Map.of("status", 200,"message", "User Deleted Successfully"));
+                .body(Map.of("status", 200, "message", "User Deleted Successfully"));
     }
 
 
@@ -354,7 +381,7 @@ public class UserServiceImpl implements UserService {
         if (!"PASSWORD_RESET".equals(claims.get("type"))) {
             throw new RuntimeException("Invalid token");
         }
-        if(newPassword.length() < 6){
+        if (newPassword.length() < 6) {
             log.warn("User creation failed | Password length Must be 6");
 //            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
 //                    .body(Map.of("status", 400,"message", "Password length Must be 6 characters.."));
@@ -371,7 +398,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public ResponseEntity<?> forgotPass(ForgotPasswordDto forgotPasswordDto) {
-        try{
+        try {
             Authentication authentication =
                     SecurityContextHolder.getContext().getAuthentication();
 
@@ -385,18 +412,18 @@ public class UserServiceImpl implements UserService {
             if (!passwordEncoder.matches(forgotPasswordDto.getOldPassword(), users.getPassword())) {
 
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(Map.of("status", 400,"message", "Password Incorrect.."));
+                        .body(Map.of("status", 400, "message", "Password Incorrect.."));
             }
 
-            if(forgotPasswordDto.getNewPassword().equals(forgotPasswordDto.getOldPassword())){
+            if (forgotPasswordDto.getNewPassword().equals(forgotPasswordDto.getOldPassword())) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(Map.of("status",400,"message", "Please Enter Diffrent Password.."));
+                        .body(Map.of("status", 400, "message", "Please Enter Diffrent Password.."));
             }
 
-            if(forgotPasswordDto.getNewPassword().length() < 6){
+            if (forgotPasswordDto.getNewPassword().length() < 6) {
                 log.warn("User creation failed | Password length Must be 6 | email={}", users.getEmail());
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(Map.of("status", 400,"message", "Password length Must be 6 characters.."));
+                        .body(Map.of("status", 400, "message", "Password length Must be 6 characters.."));
             }
 
             users.setPassword(passwordEncoder.encode(forgotPasswordDto.getNewPassword()));
@@ -417,11 +444,11 @@ public class UserServiceImpl implements UserService {
             );
 
             return ResponseEntity.status(HttpStatus.OK)
-                    .body(Map.of("status",200,"message", "Password Updated Successfully.."));
+                    .body(Map.of("status", 200, "message", "Password Updated Successfully.."));
 
-        }catch (Exception e){
+        } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("status",500,"message", e.getMessage()));
+                    .body(Map.of("status", 500, "message", e.getMessage()));
         }
     }
 
@@ -429,7 +456,7 @@ public class UserServiceImpl implements UserService {
     public ResponseEntity<?> getAllEmployee(int page, int size) {
 
         Pageable pageable = PageRequest.of(page, size);
-        Page<Users> userPage = userRepository.findByRoleNative(Roles.Employee.name(), pageable);
+        Page<Users> userPage = userRepository.findByRoleNative(Roles.ROLE_Employee.name(), pageable);
         List<ProfileResponseDto> content = userPage.getContent()
                 .stream()
                 .map(user -> {
@@ -455,7 +482,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public ResponseEntity<?> getAllManager(int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
-        Page<Users> userPage = userRepository.findByRoleNative(Roles.Manager.name(), pageable);
+        Page<Users> userPage = userRepository.findByRoleNative(Roles.ROLE_Manager.name(), pageable);
         List<ProfileResponseDto> content = userPage.getContent()
                 .stream()
                 .map(user -> {
@@ -477,6 +504,116 @@ public class UserServiceImpl implements UserService {
         return ResponseEntity.ok(response);
     }
 
+    @Override
+    public ResponseEntity<?> verifyEmail(String token) {
+        VerificationToken vt = tokenRepository.findByToken(token)
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.BAD_REQUEST, "Invalid token"));
+
+        if (vt.getExpiryDate().isBefore(LocalDateTime.now())) {
+            tokenRepository.delete(vt);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Token expired");
+        }
+
+        Users user = vt.getUser();
+        user.setEnabled(true);
+        userRepository.save(user);
+
+        tokenRepository.delete(vt);
+
+        return ResponseEntity.ok(Map.of(
+                "status", 200,
+                "message", "Email verified successfully"
+        ));
+    }
+
+    @Override
+    @Transactional
+    public ResponseEntity<?> resendVerificationEmail(String email) {
+        Optional<Users> byEmail = userRepository.findByEmail(email);
+        if (byEmail.isEmpty()) return new ResponseEntity(Map.of(
+                "status", 404,
+                "message", "User Not Found..."
+        ), HttpStatus.NOT_FOUND);
+
+        Users user = byEmail.get();
+
+
+        if (user.isEnabled()) {
+            return new ResponseEntity(Map.of(
+                    "status", 400,
+                    "message", "Email Already Verified"
+            ), HttpStatus.BAD_REQUEST);
+        }
+
+        // generate new verification token
+        createVerificationToken(user);
+
+        auditLogService.log(
+                "EMAIL_VERIFICATION_RESENT",
+                "Verification email resent to " + user.getEmail(),
+                "User",
+                user.getId()
+        );
+
+        return new ResponseEntity(Map.of(
+                "status", 200,
+                "message", "Email Sented Successfully.."
+        ), HttpStatus.OK);
+    }
+
+    public String buildVerificationEmail(Users user, String verificationLink) {
+
+        return """
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;
+                            border: 1px solid #e0e0e0; padding: 24px; border-radius: 10px;
+                            background-color: #ffffff;">
+                
+                    <h2 style="color: #2c3e50; text-align: center;">
+                        Email Verification
+                    </h2>
+                
+                    <p style="font-size: 15px; color: #333;">
+                        Hello <strong>%s</strong>,
+                    </p>
+                
+                    <p style="font-size: 14px; color: #555;">
+                        Thank you for registering with <strong>Online Task Management System</strong>.
+                        To complete your registration, please verify your email address by clicking the button below.
+                    </p>
+                
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="%s"
+                           style="background-color: #1abc9c; color: white; padding: 12px 24px;
+                                  text-decoration: none; border-radius: 6px; font-size: 15px;">
+                            Verify Email
+                        </a>
+                    </div>
+                
+                    <p style="font-size: 13px; color: #777;">
+                        This verification link will expire in <strong>24 hours</strong>.
+                    </p>
+                
+                    <p style="font-size: 13px; color: #777;">
+                        If you did not create an account, please ignore this email.
+                    </p>
+                
+                    <hr style="margin: 25px 0;">
+                
+                    <p style="font-size: 12px; color: #999; text-align: center;">
+                        © %d Online Task Management System<br/>
+                        This is an automated email. Please do not reply.
+                    </p>
+                </div>
+                """.formatted(
+                user.getName(),
+                verificationLink,
+                LocalDate.now().getYear()
+        );
+    }
+
 
     private String buildResetEmail(String name, String resetToken) {
 
@@ -484,31 +621,30 @@ public class UserServiceImpl implements UserService {
                 "http://localhost:8080/reset-password?token=" + resetToken;
 
         return """
-    Hello %s,
-
-    We received a request to reset your account password.
-
-    ===============================
-    PASSWORD RESET LINK
-    ===============================
-    %s
-
-    ===============================
-    PASSWORD RESET TOKEN
-    ===============================
-    %s
-
-    This token is valid for 15 minutes.
-
-    If you did not request a password reset, please ignore this email.
-    Your account will remain secure.
-
-    ---
-    Online Task Management System
-    This is an automated message. Please do not reply.
-    """.formatted(name, resetLink, resetToken);
+                Hello %s,
+                
+                We received a request to reset your account password.
+                
+                ===============================
+                PASSWORD RESET LINK
+                ===============================
+                %s
+                
+                ===============================
+                PASSWORD RESET TOKEN
+                ===============================
+                %s
+                
+                This token is valid for 15 minutes.
+                
+                If you did not request a password reset, please ignore this email.
+                Your account will remain secure.
+                
+                ---
+                Online Task Management System
+                This is an automated message. Please do not reply.
+                """.formatted(name, resetLink, resetToken);
     }
-
 
 
 }

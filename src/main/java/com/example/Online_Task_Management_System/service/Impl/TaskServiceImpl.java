@@ -221,7 +221,7 @@ public class TaskServiceImpl implements TaskService {
                             HttpStatus.NOT_FOUND, "Task Not Found"));
 
             // Manager restriction
-            if (loggedInUser.hasRole(Roles.valueOf("Manager")) &&
+            if (loggedInUser.hasRole(Roles.ROLE_Manager) &&
                     !old.getCreatedBy().getId().equals(loggedInUser.getId())) {
 
                 return new ResponseEntity<>(Map.of("status", 401,
@@ -329,7 +329,7 @@ public class TaskServiceImpl implements TaskService {
                 });
 
         // MANAGER permission check
-        if (loggedInUser.hasRole(Roles.Manager) &&
+        if (loggedInUser.hasRole(Roles.ROLE_Manager) &&
                 !task.getCreatedBy().getId().equals(loggedInUser.getId())) {
 
             log.warn("Unauthorized Task Delete | taskId={} | userId={}",

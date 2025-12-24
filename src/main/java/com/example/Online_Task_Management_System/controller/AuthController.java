@@ -70,6 +70,19 @@ public class AuthController {
                 .body(Map.of("message", "Password Reset Link Sented.."));
     }
 
+    @PostMapping("/resend-verify-email")
+    public ResponseEntity<?> resendVerificationEmail(@RequestParam String email) {
+        return userService.resendVerificationEmail(email);
+    }
+
+
+
+    @GetMapping("/verify")
+    public ResponseEntity<?> verifyEmail(@RequestParam String token) {
+        return userService.verifyEmail(token);
+    }
+
+
 
 
 }

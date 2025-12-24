@@ -8,6 +8,7 @@ import com.example.Online_Task_Management_System.repository.AuditLogRepository;
 import com.example.Online_Task_Management_System.repository.TaskFileRepository;
 import com.example.Online_Task_Management_System.repository.TaskRepository;
 import com.example.Online_Task_Management_System.repository.UserRepository;
+import com.example.Online_Task_Management_System.service.AuditLogService;
 import com.example.Online_Task_Management_System.service.TaskFileService;
 import com.example.Online_Task_Management_System.util.FileStorageUtil;
 import org.slf4j.Logger;
@@ -51,7 +52,7 @@ public class TaskFileServiceImpl implements TaskFileService {
     TaskFileRepository taskFileRepository;
 
     @Autowired
-    AuditLogRepository auditLogRepository;
+    AuditLogService auditLogService;
 
     @Autowired
     FileStorageUtil fileStorageUtil;
@@ -88,6 +89,14 @@ public class TaskFileServiceImpl implements TaskFileService {
             taskFile.setUploadedBy(currentUser);
 
             taskFileRepository.save(taskFile);
+
+            auditLogService.log(
+                    "TASK_FILE_UPLOADED",
+                    "File '" + file.getOriginalFilename() +
+                            "' uploaded to Task ID: " + task.getId(),
+                    "TaskFile",
+                    taskFile.getId()
+            );
 
             log.info(
                     "Task File Uploaded | taskId={} | file={} | user={}",
@@ -203,20 +212,36 @@ public class TaskFileServiceImpl implements TaskFileService {
             return new ResponseEntity(Map.of("status",401,"message", "Only admin can delete files"), HttpStatus.UNAUTHORIZED);
         }
 
-        TaskFile file = taskFileRepository.findById(fileId)
+        TaskFile taskFile = taskFileRepository.findById(fileId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "File not found"));
 
         // Delete physical file
         try {
-            Path path = Paths.get(file.getFilePath());
+            Path path = Paths.get(taskFile.getFilePath());
             Files.deleteIfExists(path);
+            // 🔐 AUDIT LOG
+            auditLogService.log(
+                    "TASK_FILE_DELETED",
+                    "File '" + taskFile.getOriginalFileName() +
+                            "' deleted from Task ID: " + taskFile.getTask().getId(),
+                    "TaskFile",
+                    taskFile.getId()
+            );
+
+            log.info(
+                    "Task File Deleted | fileId={} | file={} | user={}",
+                    fileId,
+                    taskFile.getOriginalFileName(),
+                    currentUser.getEmail()
+            );
+
         } catch (IOException e) {
             return ResponseEntity.ok(Map.of("status",500,"message", e.getMessage()));
         }
 
         // Delete DB record
-        taskFileRepository.delete(file);
+        taskFileRepository.delete(taskFile);
 
         return ResponseEntity.ok(
                 Map.of("status",200,"message", "File deleted successfully")
