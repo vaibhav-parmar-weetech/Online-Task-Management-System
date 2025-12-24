@@ -193,7 +193,7 @@ public class UserServiceImpl implements UserService {
         } catch (AuthenticationException ex) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of(
-                            "status", 401,
+                            "status", 500,
                             "message", "Authentication failed"
                     ));
         }
@@ -374,7 +374,7 @@ public class UserServiceImpl implements UserService {
 //        );
     }
 
-    public void resetPassword(String token, String newPassword) {
+    public ResponseEntity<?> resetPassword(String token, String newPassword) {
 
         Claims claims = jwtService.extractAllClaims(token);
 
@@ -383,8 +383,8 @@ public class UserServiceImpl implements UserService {
         }
         if (newPassword.length() < 6) {
             log.warn("User creation failed | Password length Must be 6");
-//            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-//                    .body(Map.of("status", 400,"message", "Password length Must be 6 characters.."));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("status", 400,"message", "Password length Must be 6 characters.."));
         }
 
         String email = claims.getSubject();
@@ -394,6 +394,7 @@ public class UserServiceImpl implements UserService {
 
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
+        return ResponseEntity.ok(Map.of("status",200,"message","Password Updated Successfully.."));
     }
 
     @Override
@@ -404,10 +405,10 @@ public class UserServiceImpl implements UserService {
 
             String email = authentication.getName();
 
-            Users users = userRepository.findByEmail(email)
-                    .orElseThrow(() ->
-                            new ResponseStatusException(
-                                    HttpStatus.NOT_FOUND, "User not found"));
+            Optional<Users> byEmail = userRepository.findByEmail(email);
+            if(byEmail.isEmpty()) return new ResponseEntity<>(Map.of("status",404,"message","User not found"),HttpStatus.NOT_FOUND);
+
+            Users users = byEmail.get();
 
             if (!passwordEncoder.matches(forgotPasswordDto.getOldPassword(), users.getPassword())) {
 
@@ -506,15 +507,15 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public ResponseEntity<?> verifyEmail(String token) {
-        VerificationToken vt = tokenRepository.findByToken(token)
-                .orElseThrow(() ->
-                        new ResponseStatusException(
-                                HttpStatus.BAD_REQUEST, "Invalid token"));
+        Optional<VerificationToken> byToken = tokenRepository.findByToken(token);
+
+        if(byToken.isEmpty()) return new ResponseEntity<>(Map.of("status",400,"message","Invalid Token"),HttpStatus.BAD_REQUEST);
+
+        VerificationToken vt = byToken.get();
 
         if (vt.getExpiryDate().isBefore(LocalDateTime.now())) {
             tokenRepository.delete(vt);
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "Token expired");
+            return new ResponseEntity<>(Map.of("status",400,"message","Token Expired"),HttpStatus.BAD_REQUEST);
         }
 
         Users user = vt.getUser();

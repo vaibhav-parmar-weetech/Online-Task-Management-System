@@ -59,8 +59,8 @@ public class AuthController {
             @RequestParam String token,
             @RequestParam String newPassword) {
 
-        userService.resetPassword(token, newPassword);
-        return ResponseEntity.ok("Password updated successfully");
+        return userService.resetPassword(token, newPassword);
+//        return ResponseEntity.ok("Password updated successfully");
     }
 
     @PostMapping("/forgot-password")

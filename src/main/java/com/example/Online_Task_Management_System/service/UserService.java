@@ -25,7 +25,7 @@ public interface UserService {
 
     void sendResetLink(String email);
 
-    void resetPassword(String token, String newPassword);
+    ResponseEntity<?> resetPassword(String token, String newPassword);
 
     ResponseEntity<?> forgotPass(ForgotPasswordDto forgotPasswordDto);
 
