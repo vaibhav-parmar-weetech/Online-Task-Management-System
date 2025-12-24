@@ -1,4 +1,4 @@
-package com.example.Online_Task_Management_System.service;
+package com.example.Online_Task_Management_System.service.notifications;
 
 import com.example.Online_Task_Management_System.entity.Users;
 import org.springframework.beans.factory.annotation.Autowired;

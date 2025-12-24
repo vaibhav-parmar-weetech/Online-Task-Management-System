@@ -6,6 +6,7 @@ import com.example.Online_Task_Management_System.enums.TaskStatus;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Set;
 
 public class TaskResponseDto {
@@ -18,6 +19,16 @@ public class TaskResponseDto {
 
     private Set<UserSummaryDto> assignedUsers;
 
+    private List<TaskCommentSummaryDto> comments;
+
+    public List<TaskCommentSummaryDto> getComments() {
+        return comments;
+    }
+
+    public void setComments(List<TaskCommentSummaryDto> comments) {
+        this.comments = comments;
+    }
+
     public UserSummaryDto getCreatedBy() {
         return createdBy;
     }
@@ -26,7 +37,7 @@ public class TaskResponseDto {
         this.createdBy = createdBy;
     }
 
-    public TaskResponseDto(Long id, String title, LocalDateTime dueDate, String taskStatus, LocalDateTime createdAt, UserSummaryDto createdBy, Set<UserSummaryDto> assignedUsers) {
+    public TaskResponseDto(Long id, String title, LocalDateTime dueDate, String taskStatus, LocalDateTime createdAt, UserSummaryDto createdBy, Set<UserSummaryDto> assignedUsers, List<TaskCommentSummaryDto> comments) {
         this.id = id;
         this.title = title;
         this.dueDate = dueDate;
@@ -34,6 +45,7 @@ public class TaskResponseDto {
         this.createdAt = createdAt;
         this.createdBy = createdBy;
         this.assignedUsers = assignedUsers;
+        this.comments = comments;
     }
 
     public TaskResponseDto() {

@@ -4,6 +4,8 @@ import com.example.Online_Task_Management_System.dto.request.ForgotPasswordDto;
 import com.example.Online_Task_Management_System.dto.request.UpdateProfileReqDto;
 import com.example.Online_Task_Management_System.dto.response.PageResponse;
 import com.example.Online_Task_Management_System.dto.response.ProfileResponseDto;
+import com.example.Online_Task_Management_System.entity.AuditLog;
+import com.example.Online_Task_Management_System.service.AuditLogService;
 import com.example.Online_Task_Management_System.service.UserService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +19,9 @@ public class UsersController {
 
     @Autowired
     UserService userService;
+
+    @Autowired
+    AuditLogService auditLogService;
 
     @GetMapping("/profile")
     public ResponseEntity<?> getProfile() {
@@ -58,6 +63,13 @@ public class UsersController {
     @DeleteMapping("/delete/{userId}")
     public ResponseEntity<?> deleteUser(@PathVariable Long userId) {
         return userService.deleteUser(userId);
+    }
+
+    @GetMapping("/view-logs")
+    public ResponseEntity<PageResponse<AuditLog>> getAllLogs(@RequestParam(defaultValue = "0") int page,
+                                                             @RequestParam(defaultValue = "10") int size){
+        return auditLogService.viewLogs(page, size);
+
     }
 
 }

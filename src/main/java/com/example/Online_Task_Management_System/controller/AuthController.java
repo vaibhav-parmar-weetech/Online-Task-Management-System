@@ -59,8 +59,8 @@ public class AuthController {
             @RequestParam String token,
             @RequestParam String newPassword) {
 
-        userService.resetPassword(token, newPassword);
-        return ResponseEntity.ok("Password updated successfully");
+        return userService.resetPassword(token, newPassword);
+//        return ResponseEntity.ok("Password updated successfully");
     }
 
     @PostMapping("/forgot-password")
@@ -69,6 +69,19 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.OK)
                 .body(Map.of("message", "Password Reset Link Sented.."));
     }
+
+    @PostMapping("/resend-verify-email")
+    public ResponseEntity<?> resendVerificationEmail(@RequestParam String email) {
+        return userService.resendVerificationEmail(email);
+    }
+
+
+
+    @GetMapping("/verify")
+    public ResponseEntity<?> verifyEmail(@RequestParam String token) {
+        return userService.verifyEmail(token);
+    }
+
 
 
 

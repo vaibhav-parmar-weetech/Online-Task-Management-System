@@ -25,11 +25,15 @@ public interface UserService {
 
     void sendResetLink(String email);
 
-    void resetPassword(String token, String newPassword);
+    ResponseEntity<?> resetPassword(String token, String newPassword);
 
     ResponseEntity<?> forgotPass(ForgotPasswordDto forgotPasswordDto);
 
     ResponseEntity<?> getAllEmployee(int page, int size);
 
     ResponseEntity<?> getAllManager(int page, int size);
+
+    ResponseEntity<?> verifyEmail(String token);
+
+    ResponseEntity<?> resendVerificationEmail(String email);
 }

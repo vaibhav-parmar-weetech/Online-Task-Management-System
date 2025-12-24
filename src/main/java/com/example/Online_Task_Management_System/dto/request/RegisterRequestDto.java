@@ -3,14 +3,17 @@ package com.example.Online_Task_Management_System.dto.request;
 import com.example.Online_Task_Management_System.enums.Roles;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 
 public class RegisterRequestDto {
-    private String name;
 
+    private String name;
     @Email(message = "Invalid email format")
     @NotBlank(message = "Email is required")
     private String email;
+    @NotNull(message = "Role is required")
     private Roles roles;
+    @NotBlank(message = "Password is required")
     private String password;
 
     public RegisterRequestDto(String name, String email, Roles roles, String password) {
