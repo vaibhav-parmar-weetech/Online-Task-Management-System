@@ -6,12 +6,19 @@ import com.example.Online_Task_Management_System.dto.response.TaskCommentRespons
 import com.example.Online_Task_Management_System.dto.response.TaskResponseDto;
 import com.example.Online_Task_Management_System.enums.TaskStatus;
 import com.example.Online_Task_Management_System.service.TaskCommentService;
+import com.example.Online_Task_Management_System.service.TaskFileService;
 import com.example.Online_Task_Management_System.service.TaskService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -27,6 +34,11 @@ public class TaskController {
     @Autowired
     TaskCommentService taskCommentService;
 
+    @Autowired
+    TaskFileService taskFileService;
+
+
+    // Admin & Manager
     @PostMapping("/add-task")
     public ResponseEntity<?> createTask(@RequestBody TaskRequestDto taskRequestDto){
         return taskService.createTask(taskRequestDto);
@@ -78,6 +90,8 @@ public class TaskController {
         return taskService.filterdTask(filter,page,size);
     }
 
+
+    // Employee
     @GetMapping("v1/EMP/view-all-task")
     public ResponseEntity<?> getTasks( @RequestParam(defaultValue = "0") int page,
                                        @RequestParam(defaultValue = "10") int size){
@@ -108,6 +122,8 @@ public class TaskController {
         return taskService.updateTaskStatus(taskId,taskUpdateDto);
     }
 
+
+    // Task-Comment
     @PostMapping("/comment/{taskId}")
     public ResponseEntity<?> addComment(@PathVariable Long taskId,
                                         @RequestBody TaskCommentRequestDto dto){
@@ -121,6 +137,31 @@ public class TaskController {
         return ResponseEntity.ok(
                 taskCommentService.getComments(taskId)
         );
+    }
+
+    // File-Upload
+    @PostMapping(value = "/{taskId}/files", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> uploadFile(
+            @PathVariable Long taskId,
+            @Parameter(description = "File to upload")
+            @RequestParam("file") MultipartFile file) {
+        return taskFileService.uploadFile(taskId, file);
+    }
+
+    @GetMapping("/{taskId}/files")
+    public ResponseEntity<?> listFiles(@PathVariable Long taskId) {
+        return taskFileService.listFiles(taskId);
+    }
+
+
+    @GetMapping("/files/{fileId}/download")
+    public ResponseEntity<Resource> downloadFile(@PathVariable Long fileId) {
+        return taskFileService.downloadFile(fileId);
+    }
+
+    @DeleteMapping("/delete-file/{fileId}")
+    public ResponseEntity<?> deleteFile(@PathVariable Long fileId) {
+        return taskFileService.deleteFile(fileId);
     }
 
 

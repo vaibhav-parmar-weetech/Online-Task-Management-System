@@ -39,6 +39,29 @@ public class Task {
     )
     private List<TaskComments> comments = new ArrayList<>();
 
+    @OneToMany(mappedBy = "task", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<TaskFile> files = new ArrayList<>();
+
+    public List<TaskFile> getFiles() {
+        return files;
+    }
+
+    public void setFiles(List<TaskFile> files) {
+        this.files = files;
+    }
+
+    public Task(Long id, String title, LocalDateTime dueDate, TaskStatus taskStatus, LocalDateTime createdAt, Set<Users> users, Users createdBy, List<TaskComments> comments, List<TaskFile> files) {
+        this.id = id;
+        this.title = title;
+        this.dueDate = dueDate;
+        this.taskStatus = taskStatus;
+        this.createdAt = createdAt;
+        this.users = users;
+        this.createdBy = createdBy;
+        this.comments = comments;
+        this.files = files;
+    }
+
     public List<TaskComments> getComments() {
         return comments;
     }
@@ -56,16 +79,6 @@ public class Task {
     }
 
 
-    public Task(Long id, String title, LocalDateTime dueDate, TaskStatus taskStatus, LocalDateTime createdAt, Set<Users> users, Users createdBy, List<TaskComments> comments) {
-        this.id = id;
-        this.title = title;
-        this.dueDate = dueDate;
-        this.taskStatus = taskStatus;
-        this.createdAt = createdAt;
-        this.users = users;
-        this.createdBy = createdBy;
-        this.comments = comments;
-    }
 
     public Task() {
     }

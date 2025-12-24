@@ -1,6 +1,6 @@
 package com.example.Online_Task_Management_System.filter;
 
-import com.example.Online_Task_Management_System.service.CustomUserDetailsService;
+import com.example.Online_Task_Management_System.service.Impl.CustomUserDetailsService;
 import com.example.Online_Task_Management_System.service.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

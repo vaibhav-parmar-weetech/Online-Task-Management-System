@@ -47,68 +47,104 @@ public class SecurityConfig {
 
                 .authorizeHttpRequests(auth -> auth
 
-                        //  PUBLIC
-                        .requestMatchers(PathRequest.toStaticResources().atCommonLocations()).permitAll()
-                        .requestMatchers("/", "/index.html").permitAll()
-                        .requestMatchers("/auth/**").permitAll()
-                        .requestMatchers("/ws/**").permitAll()
+                                //  PUBLIC
+                                .requestMatchers(PathRequest.toStaticResources().atCommonLocations()).permitAll()
+                                .requestMatchers("/", "/index.html").permitAll()
+                                .requestMatchers("/auth/**").permitAll()
+                                .requestMatchers("/ws/**").permitAll()
 
-                        // SWAGGER
-                        .requestMatchers(
-                                "/v3/api-docs/**",
-                                "/swagger-resources/**",
-                                "/swagger-ui/**",
-                                "/swagger-ui.html",
-                                "/webjars/**"
-                        ).permitAll()
+                                // ---------- SWAGGER ----------
+                                .requestMatchers(
+                                        "/v3/api-docs/**",
+                                        "/swagger-resources/**",
+                                        "/swagger-ui/**",
+                                        "/swagger-ui.html",
+                                        "/webjars/**"
+                                ).permitAll()
 
-                        //USERS
-                        .requestMatchers(
-                                "/api/users/profile",
-                                "/api/users/update",
-                                "/api/users/change-password"
-                        ).hasAnyAuthority("ROLE_Admin", "ROLE_Manager", "ROLE_Employee")
+                                // ---------- USER PROFILE (ALL ROLES) ----------
+                                .requestMatchers(
+                                        "/api/users/profile",
+                                        "/api/users/update",
+                                        "/api/users/change-password"
+                                ).hasAnyAuthority("ROLE_Admin", "ROLE_Manager", "ROLE_Employee")
 
-                        .requestMatchers(
-                                "/api/users/all-users",
-                                "/api/users/delete/**",
-                                "/api/users/all-manager"
-                        ).hasAuthority("ROLE_Admin")
+                                // ---------- USER MANAGEMENT (ADMIN) ----------
+                                .requestMatchers(
+                                        "/api/users/all-users",
+                                        "/api/users/delete/**",
+                                        "/api/users/all-manager",
+                                        "/api/users/view-logs/**"
+                                ).hasAuthority("ROLE_Admin")
 
-                        .requestMatchers(HttpMethod.GET, "/api/users/view-logs/**")
-                        .hasAuthority("ROLE_Admin")
+                                // ---------- USER MANAGEMENT (ADMIN + MANAGER) ----------
+                                .requestMatchers(
+                                        "/api/users/all-employee"
+                                ).hasAnyAuthority("ROLE_Admin", "ROLE_Manager")
 
-                        .requestMatchers(
-                                HttpMethod.GET,
-                                "/api/users/all-employee"
-                        ).hasAnyAuthority("ROLE_Admin", "ROLE_Manager")
 
-                        .requestMatchers(HttpMethod.POST, "/api/tasks/comment/**")
-                        .hasAuthority("ROLE_Employee")
+                                // ---------- TASK FILES ----------
 
-                        .requestMatchers(HttpMethod.GET,"/api/tasks/comment/**")
-                        .hasAnyAuthority("ROLE_Admin","ROLE_Manager")
+                                // Download → All roles
+                                .requestMatchers(
+                                        HttpMethod.GET,
+                                        "/api/tasks/files/*/download"
+                                ).hasAnyAuthority("ROLE_Employee", "ROLE_Manager", "ROLE_Admin")
 
-                        //  TASKS (ADMIN + MANAGER)
-                        .requestMatchers(
-                                "/api/tasks/add-task",
-                                "/api/tasks/editTask/**",
-                                "/api/tasks/deleteTask/**",
-                                "/api/tasks/*/assign",
-                                "/api/tasks/view-task/**",
-                                "/api/tasks/v1/view-all-task/**",
-                                "/api/tasks/v2/view-all-task/**",
-                                "/api/tasks/comment/**"
-                        ).hasAnyAuthority("ROLE_Admin", "ROLE_Manager")
+                                // List files (THIS ONE) → All roles
+                                .requestMatchers(
+                                        HttpMethod.GET,
+                                        "/api/tasks/*/files"
+                                ).hasAnyAuthority("ROLE_Employee", "ROLE_Manager", "ROLE_Admin")
 
-                        // TASKS (EMPLOYEE)
-                        .requestMatchers(
-                                "/api/tasks/v1/EMP/view-all-task",
-                                "/api/tasks/v2/EMP/view-all-task",
-                                "/api/tasks/my-task/**",
-                                "/api/tasks/update-task/**").hasAuthority("ROLE_Employee")
+                                // Upload files → Admin & Manager only
+                                .requestMatchers(
+                                        HttpMethod.POST,
+                                        "/api/tasks/*/files"
+                                ).hasAnyAuthority("ROLE_Admin", "ROLE_Manager")
 
-                        .anyRequest().authenticated()
+                                // Delete file → Admin only
+                                .requestMatchers(
+                                        HttpMethod.DELETE,
+                                        "/api/tasks/delete-file/**"
+                                ).hasAuthority("ROLE_Admin")
+
+
+                                // ---------- TASK COMMENTS ----------
+                                // Add comment → All roles
+                                .requestMatchers(
+                                        HttpMethod.POST,
+                                        "/api/tasks/comment/**"
+                                ).hasAnyAuthority("ROLE_Employee", "ROLE_Manager", "ROLE_Admin")
+
+                                // View comments → Admin & Manager
+                                .requestMatchers(
+                                        HttpMethod.GET,
+                                        "/api/tasks/comment/**"
+                                ).hasAnyAuthority("ROLE_Admin", "ROLE_Manager")
+
+
+                                // ---------- TASK MANAGEMENT (ADMIN + MANAGER) ----------
+                                .requestMatchers(
+                                        "/api/tasks/add-task",
+                                        "/api/tasks/editTask/**",
+                                        "/api/tasks/deleteTask/**",
+                                        "/api/tasks/*/assign",
+                                        "/api/tasks/view-task/**",
+                                        "/api/tasks/v1/view-all-task/**",
+                                        "/api/tasks/v2/view-all-task/**"
+                                ).hasAnyAuthority("ROLE_Admin", "ROLE_Manager")
+
+                                // ---------- TASK MANAGEMENT (EMPLOYEE) ----------
+                                .requestMatchers(
+                                        "/api/tasks/v1/EMP/view-all-task",
+                                        "/api/tasks/v2/EMP/view-all-task",
+                                        "/api/tasks/my-task/**",
+                                        "/api/tasks/update-task/**"
+                                ).hasAuthority("ROLE_Employee")
+
+                                // ---------- FALLBACK ----------
+                                .anyRequest().authenticated()
                 )
 
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

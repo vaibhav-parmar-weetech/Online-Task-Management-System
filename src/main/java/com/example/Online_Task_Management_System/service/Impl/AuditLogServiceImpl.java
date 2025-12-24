@@ -1,9 +1,9 @@
-package com.example.Online_Task_Management_System.service;
+package com.example.Online_Task_Management_System.service.Impl;
 
 import com.example.Online_Task_Management_System.dto.response.PageResponse;
-import com.example.Online_Task_Management_System.dto.response.ProfileResponseDto;
 import com.example.Online_Task_Management_System.entity.AuditLog;
 import com.example.Online_Task_Management_System.repository.AuditLogRepository;
+import com.example.Online_Task_Management_System.service.AuditLogService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -13,7 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 @Service
-public class AuditLogServiceImpl implements AuditLogService{
+public class AuditLogServiceImpl implements AuditLogService {
 
     @Autowired
     CustomUserDetailsService userDetailsService;
