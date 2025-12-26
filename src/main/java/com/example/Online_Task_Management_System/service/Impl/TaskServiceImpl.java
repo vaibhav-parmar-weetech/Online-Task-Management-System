@@ -216,9 +216,11 @@ public class TaskServiceImpl implements TaskService {
         try {
             Users loggedInUser = getLoggedInUser();
 
-            Task old = taskRepository.findById(taskId)
-                    .orElseThrow(() -> new ResponseStatusException(
-                            HttpStatus.NOT_FOUND, "Task Not Found"));
+            Optional<Task> oldTask = taskRepository.findById(taskId);
+
+            // Checking task is exist or not...
+            if(oldTask.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status",404,"message", "Task Not Found.."));
+            Task old = oldTask.get();
 
             // Manager restriction
             if (loggedInUser.hasRole(Roles.ROLE_Manager) &&
@@ -321,12 +323,11 @@ public class TaskServiceImpl implements TaskService {
 
         Users loggedInUser = getLoggedInUser();
 
-        Task task = taskRepository.findById(taskId)
-                .orElseThrow(() -> {
-                    log.warn("Task Deletion failed (Task not found) | taskId={}", taskId);
-                    return new ResponseStatusException(
-                            HttpStatus.NOT_FOUND, "Task Not Found");
-                });
+        Optional<Task> byId = taskRepository.findById(taskId);
+
+        // Checking task is exist or not...
+        if(byId.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status",404,"message", "Task Not Found.."));
+        Task task = byId.get();
 
         // MANAGER permission check
         if (loggedInUser.hasRole(Roles.ROLE_Manager) &&

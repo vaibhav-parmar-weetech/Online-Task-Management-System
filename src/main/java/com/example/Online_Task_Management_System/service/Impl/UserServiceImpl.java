@@ -55,6 +55,9 @@ public class UserServiceImpl implements UserService {
     private UserRepository userRepository;
 
     @Autowired
+    VerificationTokenRepository verificationTokenRepository;
+
+    @Autowired
     private JwtService jwtService;
 
     @Autowired
@@ -129,7 +132,9 @@ public class UserServiceImpl implements UserService {
     public void createVerificationToken(Users user) {
 
         // delete old token if exists
-        tokenRepository.deleteByUser(user);
+
+        Optional<VerificationToken> vf = verificationTokenRepository.findByUser(user);
+        if (vf.isPresent()) tokenRepository.deleteByUser(user);
 
         String token = UUID.randomUUID().toString();
 
@@ -143,11 +148,12 @@ public class UserServiceImpl implements UserService {
 
         String link = "http://localhost:8080/auth/verify?token=" + token;
 
-        emailService.sendHtmlEmail(
-                "vaibhav@weetechsolution.com",  // user.getEmail(),
-                "Verify your account",
-                buildVerificationEmail(user, link)
-        );
+//        emailService.sendHtmlEmail(
+//                "vaibhav@weetechsolution.com",  // user.getEmail(),
+//                "Verify your account",
+//                buildVerificationEmail(user, link)
+//        );
+        System.out.println(token);
     }
 
 

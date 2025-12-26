@@ -11,7 +11,7 @@ public interface TaskFileService {
 
     ResponseEntity<?> listFiles(Long taskId);
 
-    ResponseEntity<Resource> downloadFile(Long fileId);
+    ResponseEntity<?> downloadFile(Long fileId);
 
     ResponseEntity<?> deleteFile(Long fileId);
 }
