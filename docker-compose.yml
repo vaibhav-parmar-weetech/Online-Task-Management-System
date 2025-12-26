@@ -6,7 +6,7 @@ services:
     container_name: mysql-1
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: ${PASSWORD}
       MYSQL_DATABASE: task_db
     ports:
       - "3307:3306"
@@ -31,9 +31,9 @@ services:
     environment:
       DB_USERNAME: root
       DB_PASSWORD: root
-      MAIL_USERNAME: tasks422@gmail.com
-      MAIL_PASSWORD: ukvy_hnrp_vfqn_bcbn
-      JWT_SECRET: hQw9RZP0f4x2YJY6vPpZx8mQ3cZ7V9WcJxkM0S2uF5A=
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      JWT_SECRET: ${JWT_KEY}
 
 volumes:
   mysql_data:
