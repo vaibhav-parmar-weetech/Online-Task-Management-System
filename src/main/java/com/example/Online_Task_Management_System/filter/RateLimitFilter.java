@@ -28,7 +28,15 @@ public class RateLimitFilter extends OncePerRequestFilter {
             "/swagger-resources",
             "/webjars",
             "/actuator/health",
-            "/error"
+            "/error",  // ===== Static UI =====
+            "/",
+            "/index.html",
+            "/css/**",
+            "/js/**",
+            "/images/**",
+            "/favicon.ico",
+            "/index2.html",
+            "/index3.html"
     );
 
     /* ================= BUCKET STORES ================= */
