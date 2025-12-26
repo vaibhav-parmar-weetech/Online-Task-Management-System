@@ -122,7 +122,7 @@ public class TaskReminderScheduler {
 
             //web socket notifications
             webSocketNotificationService.send(
-                    new TaskNotificationDto(
+                    user.getEmail(),new TaskNotificationDto(
                             task.getId(),
                             task.getTitle(),
                             "Reminder: This task is due in 24 hours",
@@ -140,7 +140,7 @@ public class TaskReminderScheduler {
                 buildTask24HourReminderMessage(task, creator)
         );
         webSocketNotificationService.send(
-                new TaskNotificationDto(
+                creator.getEmail(),new TaskNotificationDto(
                         task.getId(),
                         task.getTitle(),
                         "Reminder: This task is due in 24 hours",
@@ -163,7 +163,7 @@ public class TaskReminderScheduler {
             );
 
             webSocketNotificationService.send(
-                    new TaskNotificationDto(
+                    user.getEmail(), new TaskNotificationDto(
                             task.getId(),
                             task.getTitle(),
                             "Urgent reminder: This task is due in 1 hour",
@@ -183,7 +183,7 @@ public class TaskReminderScheduler {
         );
 
         webSocketNotificationService.send(
-                new TaskNotificationDto(
+                creator.getEmail(), new TaskNotificationDto(
                         task.getId(),
                         task.getTitle(),
                         "Urgent reminder: This task is due in 1 hour",
