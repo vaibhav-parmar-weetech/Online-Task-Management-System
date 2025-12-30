@@ -114,15 +114,15 @@ public class TaskReminderScheduler {
 
         for (Users user : task.getUsers()) {
 
-            notificationService.sendTaskEmail(
-                    user,
-                    "⏳ Task Due in 24 Hours",
-                    buildTask24HourReminderMessage(task, user)
-            );
+//            notificationService.sendTaskEmail(
+//                    user,
+//                    "⏳ Task Due in 24 Hours",
+//                    buildTask24HourReminderMessage(task, user)
+//            );
 
             //web socket notifications
             webSocketNotificationService.send(
-                    new TaskNotificationDto(
+                    user.getEmail(),new TaskNotificationDto(
                             task.getId(),
                             task.getTitle(),
                             "Reminder: This task is due in 24 hours",
@@ -134,13 +134,13 @@ public class TaskReminderScheduler {
 //
         Users creator = task.getCreatedBy();
 
-        notificationService.sendTaskEmail(
-                creator,
-                "⏳ Task Due in 24 Hours",
-                buildTask24HourReminderMessage(task, creator)
-        );
+//        notificationService.sendTaskEmail(
+//                creator,
+//                "⏳ Task Due in 24 Hours",
+//                buildTask24HourReminderMessage(task, creator)
+//        );
         webSocketNotificationService.send(
-                new TaskNotificationDto(
+                creator.getEmail(),new TaskNotificationDto(
                         task.getId(),
                         task.getTitle(),
                         "Reminder: This task is due in 24 hours",
@@ -156,14 +156,14 @@ public class TaskReminderScheduler {
 
         for (Users user : task.getUsers()) {
 
-            notificationService.sendTaskEmail(
-                    user,
-                    "⏳ Task Due in 1 Hours",
-                    buildTask1HourReminderMessage(task, user)
-            );
+//            notificationService.sendTaskEmail(
+//                    user,
+//                    "⏳ Task Due in 1 Hours",
+//                    buildTask1HourReminderMessage(task, user)
+//            );
 
             webSocketNotificationService.send(
-                    new TaskNotificationDto(
+                    user.getEmail(), new TaskNotificationDto(
                             task.getId(),
                             task.getTitle(),
                             "Urgent reminder: This task is due in 1 hour",
@@ -176,14 +176,15 @@ public class TaskReminderScheduler {
 
 //        // Task creator
         Users creator = task.getCreatedBy();
-        notificationService.sendTaskEmail(
-                creator,
-                "⏳ Task Due in 1 Hours",
-                buildTask1HourReminderMessage(task, creator)
-        );
+
+//        notificationService.sendTaskEmail(
+//                creator,
+//                "⏳ Task Due in 1 Hours",
+//                buildTask1HourReminderMessage(task, creator)
+//        );
 
         webSocketNotificationService.send(
-                new TaskNotificationDto(
+                creator.getEmail(), new TaskNotificationDto(
                         task.getId(),
                         task.getTitle(),
                         "Urgent reminder: This task is due in 1 hour",

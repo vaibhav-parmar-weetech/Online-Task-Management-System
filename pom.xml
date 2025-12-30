@@ -94,6 +94,14 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
+<!--        Rate-limiting with bucket4j-->
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j-core</artifactId>
+            <version>8.7.0</version>
+        </dependency>
+
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -116,8 +124,8 @@
     </dependencies>
 
     <build>
+        <finalName>task-management</finalName>
         <plugins>
-
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>

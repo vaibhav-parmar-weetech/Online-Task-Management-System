@@ -148,7 +148,7 @@ public class TaskServiceImpl implements TaskService {
 
             // ✅ WebSocket notifications
             webSocketNotificationService.send(
-                    new TaskNotificationDto(
+                    savedTask.getCreatedBy().getEmail(),new TaskNotificationDto(
                             savedTask.getId(),
                             savedTask.getTitle(),
                             "Task created successfully",
@@ -159,7 +159,7 @@ public class TaskServiceImpl implements TaskService {
 
             for (Users user : savedTask.getUsers()) {
                 webSocketNotificationService.send(
-                        new TaskNotificationDto(
+                        user.getEmail(),new TaskNotificationDto(
                                 savedTask.getId(),
                                 savedTask.getTitle(),
                                 "You have been assigned a task",
@@ -216,9 +216,11 @@ public class TaskServiceImpl implements TaskService {
         try {
             Users loggedInUser = getLoggedInUser();
 
-            Task old = taskRepository.findById(taskId)
-                    .orElseThrow(() -> new ResponseStatusException(
-                            HttpStatus.NOT_FOUND, "Task Not Found"));
+            Optional<Task> oldTask = taskRepository.findById(taskId);
+
+            // Checking task is exist or not...
+            if(oldTask.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status",404,"message", "Task Not Found.."));
+            Task old = oldTask.get();
 
             // Manager restriction
             if (loggedInUser.hasRole(Roles.ROLE_Manager) &&
@@ -283,7 +285,7 @@ public class TaskServiceImpl implements TaskService {
             Task save = taskRepository.save(old);
 
             webSocketNotificationService.send(
-                    new TaskNotificationDto(
+                    save.getCreatedBy().getEmail(),new TaskNotificationDto(
                             save.getId(),
                             save.getTitle(),
                             "Task details have been updated. Please review the changes",
@@ -292,6 +294,20 @@ public class TaskServiceImpl implements TaskService {
                     )
             );
 
+            for (Users user : save.getUsers()) {
+                if (!user.getId().equals(loggedInUser.getId())) {
+                    webSocketNotificationService.send(
+                            user.getEmail(),
+                            new TaskNotificationDto(
+                                    save.getId(),
+                                    save.getTitle(),
+                                    "Task details have been updated",
+                                    "UPDATED",
+                                    LocalDateTime.now()
+                            )
+                    );
+                }
+            }
 
             // ✅ AUDIT LOG
             auditLogService.log(
@@ -321,12 +337,11 @@ public class TaskServiceImpl implements TaskService {
 
         Users loggedInUser = getLoggedInUser();
 
-        Task task = taskRepository.findById(taskId)
-                .orElseThrow(() -> {
-                    log.warn("Task Deletion failed (Task not found) | taskId={}", taskId);
-                    return new ResponseStatusException(
-                            HttpStatus.NOT_FOUND, "Task Not Found");
-                });
+        Optional<Task> byId = taskRepository.findById(taskId);
+
+        // Checking task is exist or not...
+        if(byId.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status",404,"message", "Task Not Found.."));
+        Task task = byId.get();
 
         // MANAGER permission check
         if (loggedInUser.hasRole(Roles.ROLE_Manager) &&
@@ -493,7 +508,7 @@ public class TaskServiceImpl implements TaskService {
             if(oldTask.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status",404,"message", "Task Not Found.."));
             Task task = oldTask.get();
 
-            if (loggedInUser.hasRole(Roles.valueOf("Manager")) &&
+            if (loggedInUser.hasRole(Roles.valueOf("ROLE_Manager")) &&
                     !task.getCreatedBy().getId().equals(loggedInUser.getId())) {
 
                 return new ResponseEntity<>(Map.of("status", 401,
@@ -514,9 +529,21 @@ public class TaskServiceImpl implements TaskService {
                 user.getTasks().add(task);
             }
             task.setUsers(users);
+            taskRepository.save(task);
 
             // SAVE OWNING SIDE
-            userRepository.saveAll(users);
+            for (Users user : users) {
+                webSocketNotificationService.send(
+                        user.getEmail(),
+                        new TaskNotificationDto(
+                                task.getId(),
+                                task.getTitle(),
+                                "You have been assigned to a task",
+                                "ASSIGNED",
+                                LocalDateTime.now()
+                        )
+                );
+            }
 
             auditLogService.log(
                     "ASSIGN_TASK",
@@ -598,6 +625,33 @@ public class TaskServiceImpl implements TaskService {
             String oldStatus = tk.getTaskStatus().name();
             tk.setTaskStatus(taskUpdateDto.getTaskStatus());
             Task save = taskRepository.save(tk);
+
+            // Notify creator
+            webSocketNotificationService.send(
+                    tk.getCreatedBy().getEmail(),
+                    new TaskNotificationDto(
+                            tk.getId(),
+                            tk.getTitle(),
+                            "Task status changed to " + tk.getTaskStatus(),
+                            "UPDATED",
+                            LocalDateTime.now()
+                    )
+            );
+
+            // Notify assigned users
+            for (Users u : tk.getUsers()) {
+                    webSocketNotificationService.send(
+                            u.getEmail(),
+                            new TaskNotificationDto(
+                                    tk.getId(),
+                                    tk.getTitle(),
+                                    "Task status updated to " + tk.getTaskStatus(),
+                                    "UPDATED",
+                                    LocalDateTime.now()
+                            )
+                    );
+
+            }
 
             auditLogService.log(
                     "TASK_STATUS_UPDATE",

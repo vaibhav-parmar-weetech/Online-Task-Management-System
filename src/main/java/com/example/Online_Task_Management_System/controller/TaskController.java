@@ -156,7 +156,7 @@ public class TaskController {
 
 
     @GetMapping("/files/{fileId}/download")
-    public ResponseEntity<Resource> downloadFile(@PathVariable Long fileId) {
+    public ResponseEntity<?> downloadFile(@PathVariable Long fileId) {
         return taskFileService.downloadFile(fileId);
     }
 

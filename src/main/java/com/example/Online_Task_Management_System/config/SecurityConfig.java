@@ -49,9 +49,10 @@ public class SecurityConfig {
 
                                 //  PUBLIC
                                 .requestMatchers(PathRequest.toStaticResources().atCommonLocations()).permitAll()
-                                .requestMatchers("/", "/index.html").permitAll()
+                                .requestMatchers("/", "/index.html","/index2.html","/index3.html").permitAll()
                                 .requestMatchers("/auth/**").permitAll()
                                 .requestMatchers("/ws/**").permitAll()
+                                .requestMatchers("/favicon.ico").permitAll()
 
                                 // ---------- SWAGGER ----------
                                 .requestMatchers(

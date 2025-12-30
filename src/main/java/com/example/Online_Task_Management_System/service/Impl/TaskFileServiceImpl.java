@@ -166,13 +166,14 @@ public class TaskFileServiceImpl implements TaskFileService {
 
     @Override
     @Transactional(readOnly = true)
-    public ResponseEntity<Resource> downloadFile(Long fileId) {
+    public ResponseEntity<?> downloadFile(Long fileId) {
 
         Users currentUser = getLoggedInUser();
 
-        TaskFile file = taskFileRepository.findById(fileId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "File not found"));
+        Optional<TaskFile> byId = taskFileRepository.findById(fileId);
+        if (byId.isEmpty()) return new ResponseEntity<>(Map.of("status",404,"message","file not found"),HttpStatus.NOT_FOUND);
+
+        TaskFile file = byId.get();
 
         Task task = file.getTask();
 
@@ -181,8 +182,7 @@ public class TaskFileServiceImpl implements TaskFileService {
         boolean isAssigned = task.getUsers().contains(currentUser);
 
         if (!isAdmin && !isCreator && !isAssigned) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN, "Not allowed to download file");
+            return new ResponseEntity<>(Map.of("status",401,"message","Not allowed to download file"),HttpStatus.UNAUTHORIZED);
         }
 
         try {
@@ -196,8 +196,7 @@ public class TaskFileServiceImpl implements TaskFileService {
                     .body(resource);
 
         } catch (MalformedURLException e) {
-            throw new ResponseStatusException(
-                    HttpStatus.INTERNAL_SERVER_ERROR, "File read error");
+            return new ResponseEntity<>(Map.of("status",500,"message",e.getMessage()),HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -212,9 +211,10 @@ public class TaskFileServiceImpl implements TaskFileService {
             return new ResponseEntity(Map.of("status",401,"message", "Only admin can delete files"), HttpStatus.UNAUTHORIZED);
         }
 
-        TaskFile taskFile = taskFileRepository.findById(fileId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "File not found"));
+        Optional<TaskFile> byId = taskFileRepository.findById(fileId);
+        if (byId.isEmpty()) return new ResponseEntity<>(Map.of("status",404,"message","file not found"),HttpStatus.NOT_FOUND);
+
+        TaskFile taskFile = byId.get();
 
         // Delete physical file
         try {

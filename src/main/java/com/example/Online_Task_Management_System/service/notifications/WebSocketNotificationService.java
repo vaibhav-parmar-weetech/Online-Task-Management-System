@@ -14,13 +14,20 @@ public class WebSocketNotificationService {
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
-    private static final Logger log = LoggerFactory.getLogger(TaskServiceImpl.class);
+    private static final Logger log =
+            LoggerFactory.getLogger(WebSocketNotificationService.class);
 
+    public void send(String email, TaskNotificationDto dto) {
 
-    public void send(TaskNotificationDto dto) {
-        log.info("🔔 Broadcasting WS notification: {}", dto.getMessage());
-        messagingTemplate.convertAndSend("/topic/notifications", dto);
+        log.info("🔔 Sending WS notification to user [{}]: {}",
+                email, dto.getMessage());
+
+        messagingTemplate.convertAndSendToUser(
+                email,
+                "/queue/notifications",
+                dto
+        );
     }
-
 }
+
 
