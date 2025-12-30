@@ -114,11 +114,11 @@ public class TaskReminderScheduler {
 
         for (Users user : task.getUsers()) {
 
-            notificationService.sendTaskEmail(
-                    user,
-                    "⏳ Task Due in 24 Hours",
-                    buildTask24HourReminderMessage(task, user)
-            );
+//            notificationService.sendTaskEmail(
+//                    user,
+//                    "⏳ Task Due in 24 Hours",
+//                    buildTask24HourReminderMessage(task, user)
+//            );
 
             //web socket notifications
             webSocketNotificationService.send(
@@ -134,11 +134,11 @@ public class TaskReminderScheduler {
 //
         Users creator = task.getCreatedBy();
 
-        notificationService.sendTaskEmail(
-                creator,
-                "⏳ Task Due in 24 Hours",
-                buildTask24HourReminderMessage(task, creator)
-        );
+//        notificationService.sendTaskEmail(
+//                creator,
+//                "⏳ Task Due in 24 Hours",
+//                buildTask24HourReminderMessage(task, creator)
+//        );
         webSocketNotificationService.send(
                 creator.getEmail(),new TaskNotificationDto(
                         task.getId(),
@@ -156,11 +156,11 @@ public class TaskReminderScheduler {
 
         for (Users user : task.getUsers()) {
 
-            notificationService.sendTaskEmail(
-                    user,
-                    "⏳ Task Due in 1 Hours",
-                    buildTask1HourReminderMessage(task, user)
-            );
+//            notificationService.sendTaskEmail(
+//                    user,
+//                    "⏳ Task Due in 1 Hours",
+//                    buildTask1HourReminderMessage(task, user)
+//            );
 
             webSocketNotificationService.send(
                     user.getEmail(), new TaskNotificationDto(
@@ -176,11 +176,12 @@ public class TaskReminderScheduler {
 
 //        // Task creator
         Users creator = task.getCreatedBy();
-        notificationService.sendTaskEmail(
-                creator,
-                "⏳ Task Due in 1 Hours",
-                buildTask1HourReminderMessage(task, creator)
-        );
+
+//        notificationService.sendTaskEmail(
+//                creator,
+//                "⏳ Task Due in 1 Hours",
+//                buildTask1HourReminderMessage(task, creator)
+//        );
 
         webSocketNotificationService.send(
                 creator.getEmail(), new TaskNotificationDto(
