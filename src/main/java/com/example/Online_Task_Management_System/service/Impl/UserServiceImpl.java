@@ -369,7 +369,7 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         String token = jwtService.generatePasswordResetToken(email);
-
+        System.out.println(token);
         String resetLink =
                 "http://localhost:8080/reset-password?token=" + token;
 
