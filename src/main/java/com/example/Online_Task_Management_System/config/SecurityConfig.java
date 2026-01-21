@@ -53,6 +53,9 @@ public class SecurityConfig {
                                 .requestMatchers("/auth/**").permitAll()
                                 .requestMatchers("/ws/**").permitAll()
                                 .requestMatchers("/favicon.ico").permitAll()
+                                .requestMatchers("/api/monitor/**").permitAll()
+                                .requestMatchers("/actuator/**").permitAll()
+
 
                                 // ---------- SWAGGER ----------
                                 .requestMatchers(
