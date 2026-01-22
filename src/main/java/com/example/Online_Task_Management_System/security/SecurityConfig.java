@@ -1,8 +1,5 @@
-package com.example.Online_Task_Management_System.config;
+package com.example.Online_Task_Management_System.security;
 
-import com.example.Online_Task_Management_System.filter.JwtAccessDeniedHandler;
-import com.example.Online_Task_Management_System.filter.JwtAuthEntryPoint;
-import com.example.Online_Task_Management_System.filter.JwtAuthenticationFilter;
 import org.springframework.boot.autoconfigure.security.servlet.PathRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -53,6 +50,9 @@ public class SecurityConfig {
                                 .requestMatchers("/auth/**").permitAll()
                                 .requestMatchers("/ws/**").permitAll()
                                 .requestMatchers("/favicon.ico").permitAll()
+                                .requestMatchers("/api/monitor/**").permitAll()
+                                .requestMatchers("/actuator/**").permitAll()
+
 
                                 // ---------- SWAGGER ----------
                                 .requestMatchers(

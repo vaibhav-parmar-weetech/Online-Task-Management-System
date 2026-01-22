@@ -1,15 +1,13 @@
 package com.example.Online_Task_Management_System.controller;
 
-import com.example.Online_Task_Management_System.dto.request.ForgotPasswordDto;
 import com.example.Online_Task_Management_System.dto.request.LoginRequestDto;
 import com.example.Online_Task_Management_System.dto.request.RegisterRequestDto;
 
 import com.example.Online_Task_Management_System.repository.UserRepository;
-import com.example.Online_Task_Management_System.service.JwtService;
+import com.example.Online_Task_Management_System.security.JwtService;
 import com.example.Online_Task_Management_System.service.UserService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.apache.catalina.User;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -74,8 +72,6 @@ public class AuthController {
     public ResponseEntity<?> resendVerificationEmail(@RequestParam String email) {
         return userService.resendVerificationEmail(email);
     }
-
-
 
     @GetMapping("/verify")
     public ResponseEntity<?> verifyEmail(@RequestParam String token) {
