@@ -6,6 +6,12 @@ import jdk.jfr.Enabled;
 import java.time.LocalDateTime;
 
 @Entity
+@Table(
+        name = "verification_token",
+        indexes = {
+                @Index(name = "idx_token", columnList = "token"),
+        }
+)
 public class VerificationToken {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
