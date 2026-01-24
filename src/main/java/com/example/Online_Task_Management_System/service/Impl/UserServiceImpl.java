@@ -10,6 +10,8 @@ import com.example.Online_Task_Management_System.entity.Task;
 import com.example.Online_Task_Management_System.entity.Users;
 import com.example.Online_Task_Management_System.entity.VerificationToken;
 import com.example.Online_Task_Management_System.enums.Roles;
+import com.example.Online_Task_Management_System.exception.custom.BadRequestException;
+import com.example.Online_Task_Management_System.exception.custom.ResourceNotFoundException;
 import com.example.Online_Task_Management_System.repository.TaskRepository;
 import com.example.Online_Task_Management_System.repository.UserRepository;
 import com.example.Online_Task_Management_System.repository.VerificationTokenRepository;
@@ -206,21 +208,26 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public ResponseEntity<?> getProfile() {
-        Authentication authentication =
-                SecurityContextHolder.getContext().getAuthentication();
+        try{
+            Authentication authentication =
+                    SecurityContextHolder.getContext().getAuthentication();
 
-        String email = authentication.getName();
-        Optional<Users> byEmail = userRepository.findByEmail(email);
-        if (byEmail.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(Map.of("status", 404, "message", "User Not Found"));
-        Users users = byEmail.get();
-        ProfileResponseDto response = new ProfileResponseDto();
-        response.setId(users.getId());
-        response.setEmail(users.getEmail());
-        response.setRoles(users.getRoles().toString());
-        response.setCreatedAt(users.getCreatedAt());
-        response.setName(users.getName());
-        return ResponseEntity.ok(response);
+            String email = authentication.getName();
+            Optional<Users> byEmail = userRepository.findByEmail(email);
+            if (byEmail.isEmpty()) throw new ResourceNotFoundException("User Not Found");
+            Users users = byEmail.get();
+            ProfileResponseDto response = new ProfileResponseDto();
+            response.setId(users.getId());
+            response.setEmail(users.getEmail());
+            response.setRoles(users.getRoles().toString());
+            response.setCreatedAt(users.getCreatedAt());
+            response.setName(users.getName());
+            return ResponseEntity.ok(response);
+        }catch (ResourceNotFoundException e){
+            throw e;
+        }catch (Exception e){
+            throw new RuntimeException("");
+        }
     }
 
     @Override
@@ -233,17 +240,14 @@ public class UserServiceImpl implements UserService {
         String email = authentication.getName();
 
         Optional<Users> optionalUsers = userRepository.findByEmail(email);
-        if (optionalUsers.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(Map.of("status", 404, "message", "User Not Found"));
+        if (optionalUsers.isEmpty()) throw new ResourceNotFoundException("User Not Found");
 
         Users users = optionalUsers.get();
 
         if (reqDto.getPassword().length() < 6) {
             log.warn("User creation failed | Password length Must be 6 | email={}", reqDto.getEmail());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("status", 400, "message", "Password length Must be 6 characters.."));
+            throw new BadRequestException("Password length Must be 6 characters..");
         }
-
 
         StringBuilder changes = new StringBuilder("Updated fields: ");
 
@@ -280,84 +284,115 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(readOnly = true)
     public ResponseEntity<PageResponse<ProfileResponseDto>> getAllUser(
-            int page,
-            int size,
-            String sortBy,
-            String direction
-    ) {
-        // default safety
-        if (sortBy == null || sortBy.isBlank()) {
-            sortBy = "createdAt";
+            int page, int size, String sortBy, String direction ){
+        try {
+            // Validate pagination parameters
+            if (page < 0) {
+                throw new BadRequestException("Page index must be >= 0");
+            }
+            if (size <= 0) {
+                throw new BadRequestException("Page size must be > 0");
+            }
+
+            // Default sorting
+            if (sortBy == null || sortBy.isBlank()) {
+                sortBy = "createdAt";
+            }
+
+            Sort sort = "asc".equalsIgnoreCase(direction)
+                    ? Sort.by(sortBy).ascending()
+                    : Sort.by(sortBy).descending();
+
+            Pageable pageable = PageRequest.of(page, size, sort);
+
+            Page<Users> userPage = userRepository.findAll(pageable);
+
+            // Optional: Throw if no users found
+            // if (userPage.isEmpty()) {
+            //     throw new ResourceNotFoundException("No users found");
+            // }
+
+            List<ProfileResponseDto> content = userPage.getContent()
+                    .stream()
+                    .map(user -> {
+                        ProfileResponseDto dto = new ProfileResponseDto();
+                        dto.setId(user.getId());
+                        dto.setEmail(user.getEmail());
+                        dto.setName(user.getName());
+                        dto.setCreatedAt(user.getCreatedAt());
+                        dto.setRoles(user.getRoles().name());
+                        return dto;
+                    })
+                    .toList();
+
+            PageResponse<ProfileResponseDto> response = new PageResponse<>();
+            response.setContent(content);
+            response.setCurrentPage(userPage.getNumber());
+            response.setTotalPages(userPage.getTotalPages());
+            response.setTotalElements(userPage.getTotalElements());
+
+            return ResponseEntity.ok(response);
+
+        } catch (BadRequestException ex) {
+            // Pass through global handler
+            throw ex;
+
+        } catch (Exception ex) {
+            log.error("Failed to fetch users: {}", ex.getMessage(), ex);
+            throw new RuntimeException("Internal server error while fetching users");
         }
-
-        Sort sort = "asc".equalsIgnoreCase(direction)
-                ? Sort.by(sortBy).ascending()
-                : Sort.by(sortBy).descending();
-
-        Pageable pageable = PageRequest.of(page, size, sort);
-        Page<Users> userPage = userRepository.findAll(pageable);
-
-        List<ProfileResponseDto> content = userPage.getContent()
-                .stream()
-                .map(user -> {
-                    ProfileResponseDto dto = new ProfileResponseDto();
-                    dto.setId(user.getId());
-                    dto.setEmail(user.getEmail());
-                    dto.setName(user.getName());
-                    dto.setCreatedAt(user.getCreatedAt());
-                    dto.setRoles(user.getRoles().name());
-                    return dto;
-                })
-                .toList();
-
-        PageResponse<ProfileResponseDto> response = new PageResponse<>();
-        response.setContent(content);
-        response.setCurrentPage(userPage.getNumber());
-        response.setTotalPages(userPage.getTotalPages());
-        response.setTotalElements(userPage.getTotalElements());
-
-        return ResponseEntity.ok(response);
     }
+
 
 
     @Override
     @Transactional
     public ResponseEntity<?> deleteUser(Long userId) {
+        try {
+            Users user = userRepository.findById(userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
 
-        Optional<Users> optionalUsers = userRepository.findById(userId);
-        if (optionalUsers.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(Map.of("status", 404, "message", "User Not Found"));
+            for (Task task : user.getTasks()) {
+                task.getUsers().remove(user);
+            }
+            user.getTasks().clear();
 
-        Users user = optionalUsers.get();
-        for (Task task : user.getTasks()) {
-            task.getUsers().remove(user);
+            List<Task> createdTasks = taskRepository.findByCreatedBy(user);
+            for (Task task : createdTasks) {
+                task.setCreatedBy(null); // OR assign to admin/system user
+            }
+
+            userRepository.delete(user);
+
+            auditLogService.log(
+                    "USER_DELETED",
+                    "User DELETED: " + user.getEmail(),
+                    "Users",
+                    user.getId()
+            );
+
+            log.info(
+                    "User Deleted successfully | userId={} | email={} | role={}",
+                    user.getId(),
+                    user.getEmail(),
+                    user.getRoles()
+            );
+
+            return ResponseEntity.ok(Map.of(
+                    "status", 200,
+                    "message", "User Deleted Successfully"
+            ));
+
+        } catch (ResourceNotFoundException ex) {
+            // Let the global handler handle it
+            throw ex;
+
+        } catch (Exception ex) {
+            log.error("Failed to delete user with id {}: {}", userId, ex.getMessage(), ex);
+            throw new RuntimeException("Internal server error while deleting user");
         }
-        user.getTasks().clear();
-
-        List<Task> createdTasks = taskRepository.findByCreatedBy(user);
-        for (Task task : createdTasks) {
-            task.setCreatedBy(null); // OR assign to admin/system user
-        }
-
-        userRepository.delete(user);
-
-        auditLogService.log(
-                "USER_DELETED",
-                "User DELETED: " + user.getEmail(),
-                "Users",
-                user.getId()
-        );
-
-        log.info(
-                "User Deleted successfully | userId={} | email={} | role={}",
-                user.getId(),
-                user.getEmail(),
-                user.getRoles()
-        );
-
-        return ResponseEntity.status(HttpStatus.OK)
-                .body(Map.of("status", 200, "message", "User Deleted Successfully"));
     }
+
 
 
     @Override
@@ -383,18 +418,17 @@ public class UserServiceImpl implements UserService {
         Claims claims = jwtService.extractAllClaims(token);
 
         if (!"PASSWORD_RESET".equals(claims.get("type"))) {
-            throw new RuntimeException("Invalid token");
+            throw new BadRequestException("Invalid token");
         }
         if (newPassword.length() < 6) {
             log.warn("User creation failed | Password length Must be 6");
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("status", 400,"message", "Password length Must be 6 characters.."));
+            throw new BadRequestException("Password length Must be 6 characters..");
         }
 
         String email = claims.getSubject();
 
         Users user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
@@ -459,55 +493,101 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public ResponseEntity<?> getAllEmployee(int page, int size) {
+        try {
+            if (page < 0) {
+                throw new BadRequestException("Page index must be >= 0");
+            }
+            if (size <= 0) {
+                throw new BadRequestException("Page size must be > 0");
+            }
 
-        Pageable pageable = PageRequest.of(page, size);
-        Page<Users> userPage = userRepository.findByRoleNative(Roles.ROLE_Employee.name(), pageable);
-        List<ProfileResponseDto> content = userPage.getContent()
-                .stream()
-                .map(user -> {
-                    ProfileResponseDto dto = new ProfileResponseDto();
-                    dto.setId(user.getId());
-                    dto.setName(user.getName());
-                    dto.setEmail(user.getEmail());
-                    dto.setRoles(user.getRoles().name());
-                    dto.setCreatedAt(user.getCreatedAt());
-                    return dto;
-                })
-                .toList();
+            Pageable pageable = PageRequest.of(page, size);
 
-        PageResponse<ProfileResponseDto> response = new PageResponse<>();
-        response.setContent(content);
-        response.setCurrentPage(userPage.getNumber());
-        response.setTotalPages(userPage.getTotalPages());
-        response.setTotalElements(userPage.getTotalElements());
-        return ResponseEntity.ok(response);
+            Page<Users> userPage = userRepository.findByRoleNative(Roles.ROLE_Employee.name(), pageable);
+
+
+            List<ProfileResponseDto> content = userPage.getContent()
+                    .stream()
+                    .map(user -> {
+                        ProfileResponseDto dto = new ProfileResponseDto();
+                        dto.setId(user.getId());
+                        dto.setName(user.getName());
+                        dto.setEmail(user.getEmail());
+                        dto.setRoles(user.getRoles().name());
+                        dto.setCreatedAt(user.getCreatedAt());
+                        return dto;
+                    })
+                    .toList();
+
+            PageResponse<ProfileResponseDto> response = new PageResponse<>();
+            response.setContent(content);
+            response.setCurrentPage(userPage.getNumber());
+            response.setTotalPages(userPage.getTotalPages());
+            response.setTotalElements(userPage.getTotalElements());
+
+            return ResponseEntity.ok(response);
+
+        } catch (BadRequestException ex) {
+            // Pass through to global handler
+            throw ex;
+
+        } catch (Exception ex) {
+            log.error("Failed to fetch employees: {}", ex.getMessage(), ex);
+            throw new RuntimeException("Internal server error while fetching employees");
+        }
 
     }
 
     @Override
     public ResponseEntity<?> getAllManager(int page, int size) {
-        Pageable pageable = PageRequest.of(page, size);
-        Page<Users> userPage = userRepository.findByRoleNative(Roles.ROLE_Manager.name(), pageable);
-        List<ProfileResponseDto> content = userPage.getContent()
-                .stream()
-                .map(user -> {
-                    ProfileResponseDto dto = new ProfileResponseDto();
-                    dto.setId(user.getId());
-                    dto.setName(user.getName());
-                    dto.setEmail(user.getEmail());
-                    dto.setRoles(user.getRoles().name());
-                    dto.setCreatedAt(user.getCreatedAt());
-                    return dto;
-                })
-                .toList();
+        try {
+            if (page < 0) {
+                throw new BadRequestException("Page index must be >= 0");
+            }
+            if (size <= 0) {
+                throw new BadRequestException("Page size must be > 0");
+            }
 
-        PageResponse<ProfileResponseDto> response = new PageResponse<>();
-        response.setContent(content);
-        response.setCurrentPage(userPage.getNumber());
-        response.setTotalPages(userPage.getTotalPages());
-        response.setTotalElements(userPage.getTotalElements());
-        return ResponseEntity.ok(response);
+            Pageable pageable = PageRequest.of(page, size);
+
+            Page<Users> userPage = userRepository.findByRoleNative(Roles.ROLE_Manager.name(), pageable);
+
+            // Optional: throw if no managers found
+            // if (userPage.isEmpty()) {
+            //     throw new ResourceNotFoundException("No managers found");
+            // }
+
+            List<ProfileResponseDto> content = userPage.getContent()
+                    .stream()
+                    .map(user -> {
+                        ProfileResponseDto dto = new ProfileResponseDto();
+                        dto.setId(user.getId());
+                        dto.setName(user.getName());
+                        dto.setEmail(user.getEmail());
+                        dto.setRoles(user.getRoles().name());
+                        dto.setCreatedAt(user.getCreatedAt());
+                        return dto;
+                    })
+                    .toList();
+
+            PageResponse<ProfileResponseDto> response = new PageResponse<>();
+            response.setContent(content);
+            response.setCurrentPage(userPage.getNumber());
+            response.setTotalPages(userPage.getTotalPages());
+            response.setTotalElements(userPage.getTotalElements());
+
+            return ResponseEntity.ok(response);
+
+        } catch (BadRequestException ex) {
+            // Let the global handler handle it
+            throw ex;
+
+        } catch (Exception ex) {
+            log.error("Failed to fetch managers: {}", ex.getMessage(), ex);
+            throw new RuntimeException("Internal server error while fetching managers");
+        }
     }
+
 
     @Override
     public ResponseEntity<?> verifyEmail(String token) {
