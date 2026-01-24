@@ -1,4 +1,4 @@
-package com.example.Online_Task_Management_System.service;
+package com.example.Online_Task_Management_System.security;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;

@@ -4,6 +4,8 @@ import com.example.Online_Task_Management_System.dto.response.TaskFileResponseDt
 import com.example.Online_Task_Management_System.entity.Task;
 import com.example.Online_Task_Management_System.entity.TaskFile;
 import com.example.Online_Task_Management_System.entity.Users;
+import com.example.Online_Task_Management_System.exception.custom.PermissionDeniedException;
+import com.example.Online_Task_Management_System.exception.custom.ResourceNotFoundException;
 import com.example.Online_Task_Management_System.repository.AuditLogRepository;
 import com.example.Online_Task_Management_System.repository.TaskFileRepository;
 import com.example.Online_Task_Management_System.repository.TaskRepository;
@@ -62,19 +64,17 @@ public class TaskFileServiceImpl implements TaskFileService {
 
 
     @Override
+    @Transactional
     public ResponseEntity<?> uploadFile(Long taskId, MultipartFile file) {
         Users currentUser = getLoggedInUser();
-
-        Optional<Task> byId = taskRepository.findById(taskId);
-        if (byId.isEmpty()) return new ResponseEntity<>(Map.of("status",400,"message","Task Not Found.."),HttpStatus.NOT_FOUND);
-
-        Task task = byId.get();
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found with id: " + taskId));
 
         boolean isCreator = task.getCreatedBy().getId().equals(currentUser.getId());
         boolean isAssigned = task.getUsers().contains(currentUser);
 
         if (!isCreator && !isAssigned) {
-            return new ResponseEntity<>(Map.of("status",403,"message","You are not assigned to this task"),HttpStatus.FORBIDDEN);
+            throw new PermissionDeniedException("You are not assigned to this task");
         }
 
         try {
@@ -92,54 +92,52 @@ public class TaskFileServiceImpl implements TaskFileService {
 
             auditLogService.log(
                     "TASK_FILE_UPLOADED",
-                    "File '" + file.getOriginalFilename() +
-                            "' uploaded to Task ID: " + task.getId(),
+                    "File '" + file.getOriginalFilename() + "' uploaded to Task ID: " + task.getId(),
                     "TaskFile",
                     taskFile.getId()
             );
 
-            log.info(
-                    "Task File Uploaded | taskId={} | file={} | user={}",
-                    taskId, file.getOriginalFilename(), currentUser.getEmail()
-            );
+            log.info("Task File Uploaded | taskId={} | file={} | user={}",
+                    taskId, file.getOriginalFilename(), currentUser.getEmail());
 
-            return ResponseEntity.ok(Map.of("status",200,"message", "File uploaded successfully"));
+            return ResponseEntity.ok(Map.of("status", 200, "message", "File uploaded successfully"));
 
-        } catch (IOException e) {
-            return ResponseEntity.ok(Map.of("status",500,"message", e.getMessage()));
+        } catch (IOException ex) {
+            log.error("Failed to upload file | taskId={} | user={} | file={}",
+                    taskId, currentUser.getEmail(), file.getOriginalFilename(), ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "status", 500,
+                            "message", "Failed to upload file: " + ex.getMessage()
+                    ));
         }
-
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ResponseEntity<?> listFiles(Long taskId) {
 
         Users user = getLoggedInUser();
 
-        Optional<Task> byId = taskRepository.findById(taskId);
-
-        if (byId.isEmpty()) return new ResponseEntity<>(Map.of("status",400,"message","Task Not Found.."),HttpStatus.NOT_FOUND);
-
-        Task task = byId.get();
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found with id: " + taskId));
 
         boolean isAdmin = user.getRoles().name().contains("Admin");
         boolean isManager = user.getRoles().name().contains("Manager");
         boolean isAssignedEmployee = task.getUsers().contains(user);
 
-        // 🔐 DATA-LEVEL SECURITY
         if (!isAdmin && !isManager && !isAssignedEmployee) {
-            return new ResponseEntity<>(Map.of("status",401,"message","You are not allowed to view files of this task"),HttpStatus.UNAUTHORIZED);
+            throw new PermissionDeniedException("You are not allowed to view files of this task");
         }
 
         List<TaskFile> files = taskFileRepository.findByTaskId(taskId);
 
         if (files.isEmpty()) {
-            return ResponseEntity.ok(
-                    Map.of(
-                            "status", 200,
-                            "message", "File Not Available"
-                    )
-            );
+            log.info("No files found | taskId={} | userId={}", taskId, user.getId());
+            return ResponseEntity.ok(Map.of(
+                    "status", 200,
+                    "message", "No files available for this task"
+            ));
         }
 
         List<TaskFileResponseDto> response = files.stream()
@@ -151,8 +149,11 @@ public class TaskFileServiceImpl implements TaskFileService {
                 ))
                 .toList();
 
+        log.info("Listed files | taskId={} | filesCount={} | userId={}", taskId, response.size(), user.getId());
+
         return ResponseEntity.ok(response);
     }
+
 
 
     private Users getLoggedInUser() {
@@ -170,10 +171,8 @@ public class TaskFileServiceImpl implements TaskFileService {
 
         Users currentUser = getLoggedInUser();
 
-        Optional<TaskFile> byId = taskFileRepository.findById(fileId);
-        if (byId.isEmpty()) return new ResponseEntity<>(Map.of("status",404,"message","file not found"),HttpStatus.NOT_FOUND);
-
-        TaskFile file = byId.get();
+        TaskFile file = taskFileRepository.findById(fileId)
+                .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
 
         Task task = file.getTask();
 
@@ -182,12 +181,15 @@ public class TaskFileServiceImpl implements TaskFileService {
         boolean isAssigned = task.getUsers().contains(currentUser);
 
         if (!isAdmin && !isCreator && !isAssigned) {
-            return new ResponseEntity<>(Map.of("status",401,"message","Not allowed to download file"),HttpStatus.UNAUTHORIZED);
+            throw new PermissionDeniedException("You are not allowed to download this file");
         }
 
         try {
             Path path = Paths.get(file.getFilePath());
             Resource resource = new UrlResource(path.toUri());
+
+            log.info("File download initiated | fileId={} | taskId={} | userId={}",
+                    fileId, task.getId(), currentUser.getId());
 
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION,
@@ -195,56 +197,60 @@ public class TaskFileServiceImpl implements TaskFileService {
                     .contentType(MediaType.parseMediaType(file.getFileType()))
                     .body(resource);
 
-        } catch (MalformedURLException e) {
-            return new ResponseEntity<>(Map.of("status",500,"message",e.getMessage()),HttpStatus.INTERNAL_SERVER_ERROR);
+        } catch (MalformedURLException ex) {
+            log.error("Failed to load file | fileId={} | userId={}", fileId, currentUser.getId(), ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "status", 500,
+                            "message", "Failed to load file: " + ex.getMessage()
+                    ));
         }
     }
+
 
     @Override
     @Transactional
     public ResponseEntity<?> deleteFile(Long fileId) {
+
         Users currentUser = getLoggedInUser();
 
-        // Admin check (extra safety)
         boolean isAdmin = currentUser.getRoles().name().contains("Admin");
         if (!isAdmin) {
-            return new ResponseEntity(Map.of("status",401,"message", "Only admin can delete files"), HttpStatus.UNAUTHORIZED);
+            throw new PermissionDeniedException("Only admin can delete files");
         }
 
-        Optional<TaskFile> byId = taskFileRepository.findById(fileId);
-        if (byId.isEmpty()) return new ResponseEntity<>(Map.of("status",404,"message","file not found"),HttpStatus.NOT_FOUND);
+        TaskFile taskFile = taskFileRepository.findById(fileId)
+                .orElseThrow(() -> new ResourceNotFoundException("File not found with id: " + fileId));
 
-        TaskFile taskFile = byId.get();
-
-        // Delete physical file
         try {
             Path path = Paths.get(taskFile.getFilePath());
             Files.deleteIfExists(path);
-            // 🔐 AUDIT LOG
+
+            log.info("Task File Deleted | fileId={} | file={} | user={}",
+                    fileId, taskFile.getOriginalFileName(), currentUser.getEmail());
+
             auditLogService.log(
                     "TASK_FILE_DELETED",
-                    "File '" + taskFile.getOriginalFileName() +
-                            "' deleted from Task ID: " + taskFile.getTask().getId(),
+                    "File '" + taskFile.getOriginalFileName() + "' deleted from Task ID: " + taskFile.getTask().getId(),
                     "TaskFile",
                     taskFile.getId()
             );
 
-            log.info(
-                    "Task File Deleted | fileId={} | file={} | user={}",
-                    fileId,
-                    taskFile.getOriginalFileName(),
-                    currentUser.getEmail()
-            );
-
-        } catch (IOException e) {
-            return ResponseEntity.ok(Map.of("status",500,"message", e.getMessage()));
+        } catch (IOException ex) {
+            log.error("Failed to delete file from disk | fileId={} | user={}", fileId, currentUser.getId(), ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "status", 500,
+                            "message", "Failed to delete file: " + ex.getMessage()
+                    ));
         }
 
-        // Delete DB record
         taskFileRepository.delete(taskFile);
 
-        return ResponseEntity.ok(
-                Map.of("status",200,"message", "File deleted successfully")
-        );
+        return ResponseEntity.ok(Map.of(
+                "status", 200,
+                "message", "File deleted successfully"
+        ));
     }
+
 }

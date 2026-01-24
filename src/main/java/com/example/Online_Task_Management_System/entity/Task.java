@@ -9,6 +9,15 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 @Entity
+@Table(
+        name = "task",
+        indexes = {
+                @Index(name = "idx_task_due_date", columnList = "dueDate"),
+                @Index(name = "idx_task_task_status", columnList = "taskStatus"),
+                @Index(name = "inx_task_created_by", columnList = "created_by"),
+                @Index(name = "idx_task_status_due_date", columnList = "task_status, due_date")
+        }
+)
 public class Task {
 
     @Id
