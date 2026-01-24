@@ -12,7 +12,11 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users",
+    indexes = {
+        @Index(name = "idx_roles", columnList = "roles")
+    }
+)
 public class Users implements UserDetails {
 
     @Id
