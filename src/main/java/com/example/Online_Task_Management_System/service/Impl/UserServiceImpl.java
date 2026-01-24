@@ -12,6 +12,7 @@ import com.example.Online_Task_Management_System.entity.VerificationToken;
 import com.example.Online_Task_Management_System.enums.Roles;
 import com.example.Online_Task_Management_System.exception.custom.BadRequestException;
 import com.example.Online_Task_Management_System.exception.custom.ResourceNotFoundException;
+import com.example.Online_Task_Management_System.exception.custom.UnauthorizedException;
 import com.example.Online_Task_Management_System.repository.TaskRepository;
 import com.example.Online_Task_Management_System.repository.UserRepository;
 import com.example.Online_Task_Management_System.repository.VerificationTokenRepository;
@@ -81,52 +82,54 @@ public class UserServiceImpl implements UserService {
 
 
     @Override
+    @Transactional
     public ResponseEntity<?> registerUser(RegisterRequestDto user) {
         try {
             log.info("User registration request received | email={}", user.getEmail());
 
             if (userRepository.existsByEmail(user.getEmail())) {
                 log.warn("User creation failed | email already exists={}", user.getEmail());
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(Map.of("status", 400, "message", "email already exists"));
+                throw new BadRequestException("Email already exists");
             }
 
             if (user.getPassword().length() < 6) {
-                log.warn("User creation failed | Password length Must be 6 | email={}", user.getEmail());
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(Map.of("status", 400, "message", "Password length Must be 6 characters.."));
+                log.warn("User creation failed | Password length < 6 | email={}", user.getEmail());
+                throw new BadRequestException("Password length must be at least 6 characters");
             }
-            Users nwUser = new Users();
-            nwUser.setName(user.getName());
-            nwUser.setEmail(user.getEmail());
-            nwUser.setRoles(user.getRoles());
-            nwUser.setPassword(passwordEncoder.encode(user.getPassword()));
 
-            Users saved = userRepository.save(nwUser);
+            Users newUser = new Users();
+            newUser.setName(user.getName());
+            newUser.setEmail(user.getEmail());
+            newUser.setRoles(user.getRoles());
+            newUser.setPassword(passwordEncoder.encode(user.getPassword()));
+
+            Users saved = userRepository.save(newUser);
 
             createVerificationToken(saved);
+
             auditLogService.log(
                     "CREATE_USER",
                     "User registered: " + user.getEmail(),
                     "Users",
-                    nwUser.getId()
-            );
-            log.info(
-                    "User created successfully | userId={} | email={} | role={}",
-                    saved.getId(),
-                    saved.getEmail(),
-                    saved.getRoles()
+                    saved.getId()
             );
 
-            return ResponseEntity.ok(
-                    Map.of("status", 201, "message", "User Added successfully")
-            );
+            log.info("User created successfully | userId={} | email={} | role={}",
+                    saved.getId(), saved.getEmail(), saved.getRoles());
 
-        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(Map.of("status", 201, "message", "User added successfully"));
+
+        } catch (BadRequestException ex) {
+            throw ex;
+
+        } catch (Exception ex) {
+            log.error("Unexpected error during user registration | email={}", user.getEmail(), ex);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("status", 500, "message", e.getMessage()));
+                    .body(Map.of("status", 500, "message", "Internal server error"));
         }
     }
+
 
     @Transactional
     public void createVerificationToken(Users user) {
@@ -169,7 +172,7 @@ public class UserServiceImpl implements UserService {
             );
 
             Users user = userRepository.findByEmail(request.getEmail())
-                    .orElseThrow();
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + request.getEmail()));
 
             String token = jwtService.generateToken(user);
 
@@ -180,30 +183,22 @@ public class UserServiceImpl implements UserService {
                     user.getId()
             );
 
-            return ResponseEntity.ok(
-                    new LoginResponseDto(token, "Login Successful")
-            );
+            return ResponseEntity.ok(new LoginResponseDto(token, "Login Successful"));
 
         } catch (DisabledException ex) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of(
-                            "status", 401,
-                            "message", "Please verify your email first"
-                    ));
+            log.warn("Login failed - email not verified | email={}", request.getEmail());
+            throw new UnauthorizedException("Please verify your email first");
+
         } catch (BadCredentialsException ex) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of(
-                            "status", 401,
-                            "message", "Invalid email or password"
-                    ));
+            log.warn("Login failed - invalid credentials | email={}", request.getEmail());
+            throw new UnauthorizedException("Invalid email or password");
+
         } catch (AuthenticationException ex) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of(
-                            "status", 500,
-                            "message", "Authentication failed"
-                    ));
+            log.error("Authentication failed | email={}", request.getEmail(), ex);
+            throw new UnauthorizedException("Authentication failed");
         }
     }
+
 
 
     @Override
@@ -399,7 +394,7 @@ public class UserServiceImpl implements UserService {
     public void sendResetLink(String email) {
 
         Users user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         String token = jwtService.generatePasswordResetToken(email);
         System.out.println(token);
@@ -411,29 +406,53 @@ public class UserServiceImpl implements UserService {
 //                "Reset Your Password",
 //                buildResetEmail(user.getName(), token)
 //        );
+        log.info("Password reset link prepared for email={}: {}", email, resetLink);
+
     }
 
+    @Override
+    @Transactional
     public ResponseEntity<?> resetPassword(String token, String newPassword) {
+        try {
+            log.info("Password reset request received");
 
-        Claims claims = jwtService.extractAllClaims(token);
+            Claims claims = jwtService.extractAllClaims(token);
 
-        if (!"PASSWORD_RESET".equals(claims.get("type"))) {
-            throw new BadRequestException("Invalid token");
+            if (!"PASSWORD_RESET".equals(claims.get("type"))) {
+                log.warn("Invalid password reset token used");
+                throw new BadRequestException("Invalid token");
+            }
+
+            if (newPassword.length() < 6) {
+                log.warn("Password reset failed | Password length < 6");
+                throw new BadRequestException("Password length must be at least 6 characters");
+            }
+
+            String email = claims.getSubject();
+
+            Users user = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email));
+
+            user.setPassword(passwordEncoder.encode(newPassword));
+            userRepository.save(user);
+
+            log.info("Password updated successfully | email={}", email);
+
+            auditLogService.log(
+                    "PASSWORD_RESET",
+                    "Password updated successfully",
+                    "Users",
+                    user.getId()
+            );
+
+            return ResponseEntity.ok(Map.of("status", 200, "message", "Password updated successfully"));
+
+        } catch (Exception e) {
+            log.error("Unexpected error during password reset", e);
+            throw e; // Let GlobalExceptionHandler handle unexpected errors
         }
-        if (newPassword.length() < 6) {
-            log.warn("User creation failed | Password length Must be 6");
-            throw new BadRequestException("Password length Must be 6 characters..");
-        }
-
-        String email = claims.getSubject();
-
-        Users user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-
-        user.setPassword(passwordEncoder.encode(newPassword));
-        userRepository.save(user);
-        return ResponseEntity.ok(Map.of("status",200,"message","Password Updated Successfully.."));
     }
+
 
     @Override
     public ResponseEntity<?> forgotPass(ForgotPasswordDto forgotPasswordDto) {
@@ -590,64 +609,84 @@ public class UserServiceImpl implements UserService {
 
 
     @Override
+    @Transactional
     public ResponseEntity<?> verifyEmail(String token) {
-        Optional<VerificationToken> byToken = tokenRepository.findByToken(token);
+        try {
+            log.info("Email verification request received | token={}", token);
 
-        if(byToken.isEmpty()) return new ResponseEntity<>(Map.of("status",400,"message","Invalid Token"),HttpStatus.BAD_REQUEST);
+            VerificationToken verificationToken = tokenRepository.findByToken(token)
+                    .orElseThrow(() -> new BadRequestException("Invalid token"));
 
-        VerificationToken vt = byToken.get();
+            if (verificationToken.getExpiryDate().isBefore(LocalDateTime.now())) {
+                tokenRepository.delete(verificationToken);
+                log.warn("Email verification failed | Token expired | token={}", token);
+                throw new BadRequestException("Token expired");
+            }
 
-        if (vt.getExpiryDate().isBefore(LocalDateTime.now())) {
-            tokenRepository.delete(vt);
-            return new ResponseEntity<>(Map.of("status",400,"message","Token Expired"),HttpStatus.BAD_REQUEST);
+            Users user = verificationToken.getUser();
+            user.setEnabled(true);
+            userRepository.save(user);
+
+            tokenRepository.delete(verificationToken);
+            log.info("Email verified successfully | userId={} | email={}", user.getId(), user.getEmail());
+
+            // Audit log
+            auditLogService.log(
+                    "EMAIL_VERIFIED",
+                    "Email verified successfully",
+                    "User",
+                    user.getId()
+            );
+
+            return ResponseEntity.ok(Map.of(
+                    "status", 200,
+                    "message", "Email verified successfully"
+            ));
+
+        } catch (Exception e) {
+            log.error("Unexpected error during email verification | token={}", token, e);
+            throw e; // Let GlobalExceptionHandler handle unexpected exceptions
         }
-
-        Users user = vt.getUser();
-        user.setEnabled(true);
-        userRepository.save(user);
-
-        tokenRepository.delete(vt);
-
-        return ResponseEntity.ok(Map.of(
-                "status", 200,
-                "message", "Email verified successfully"
-        ));
     }
+
 
     @Override
     @Transactional
     public ResponseEntity<?> resendVerificationEmail(String email) {
-        Optional<Users> byEmail = userRepository.findByEmail(email);
-        if (byEmail.isEmpty()) return new ResponseEntity(Map.of(
-                "status", 404,
-                "message", "User Not Found..."
-        ), HttpStatus.NOT_FOUND);
+        try {
+            log.info("Resend verification email request received | email={}", email);
 
-        Users user = byEmail.get();
+            Users user = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email));
 
+            if (user.isEnabled()) {
+                log.warn("Attempted to resend verification email but email already verified | email={}", email);
+                throw new BadRequestException("Email already verified");
+            }
 
-        if (user.isEnabled()) {
-            return new ResponseEntity(Map.of(
-                    "status", 400,
-                    "message", "Email Already Verified"
-            ), HttpStatus.BAD_REQUEST);
+            // Generate new verification token
+            createVerificationToken(user);
+            log.info("Verification token regenerated for email={}", email);
+
+            // Audit log
+            auditLogService.log(
+                    "EMAIL_VERIFICATION_RESENT",
+                    "Verification email resent to " + user.getEmail(),
+                    "User",
+                    user.getId()
+            );
+
+            return ResponseEntity.ok(Map.of(
+                    "status", 200,
+                    "message", "Verification email sent successfully"
+            ));
+
+        } catch (Exception e) {
+            log.error("Unexpected error while resending verification email for email={}", email, e);
+            throw e; // Let GlobalExceptionHandler handle unexpected exceptions
         }
-
-        // generate new verification token
-        createVerificationToken(user);
-
-        auditLogService.log(
-                "EMAIL_VERIFICATION_RESENT",
-                "Verification email resent to " + user.getEmail(),
-                "User",
-                user.getId()
-        );
-
-        return new ResponseEntity(Map.of(
-                "status", 200,
-                "message", "Email Sented Successfully.."
-        ), HttpStatus.OK);
     }
+
 
     public String buildVerificationEmail(Users user, String verificationLink) {
 

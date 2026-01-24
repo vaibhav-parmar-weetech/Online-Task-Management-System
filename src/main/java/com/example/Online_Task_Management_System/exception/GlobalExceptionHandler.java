@@ -1,8 +1,6 @@
 package com.example.Online_Task_Management_System.exception;
 
-import com.example.Online_Task_Management_System.exception.custom.BadRequestException;
-import com.example.Online_Task_Management_System.exception.custom.ConflictException;
-import com.example.Online_Task_Management_System.exception.custom.ResourceNotFoundException;
+import com.example.Online_Task_Management_System.exception.custom.*;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -56,7 +54,6 @@ public class GlobalExceptionHandler {
     }
 
 
-    // ================= Resource Not Found =================
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiError> handleNotFound(ResourceNotFoundException ex) {
         ApiError error = new ApiError(
@@ -67,6 +64,30 @@ public class GlobalExceptionHandler {
         log.warn("Resource Not Found: {}", ex.getMessage());
         return new ResponseEntity<>(error, HttpStatus.NOT_FOUND);
     }
+
+    @ExceptionHandler(PermissionDeniedException.class)
+    public ResponseEntity<ApiError> handlePermissionDenied(PermissionDeniedException ex) {
+        ApiError error = new ApiError(
+                HttpStatus.FORBIDDEN.value(),
+                HttpStatus.FORBIDDEN.getReasonPhrase(),
+                ex.getMessage()
+        );
+        log.warn("Permission Denied: {}", ex.getMessage());
+        return new ResponseEntity<>(error, HttpStatus.FORBIDDEN);
+    }
+
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ApiError> handleUnauthorized(UnauthorizedException ex) {
+        ApiError error = new ApiError(
+                HttpStatus.UNAUTHORIZED.value(),
+                HttpStatus.UNAUTHORIZED.getReasonPhrase(),
+                ex.getMessage()
+        );
+        log.warn("Unauthorized access: {}", ex.getMessage());
+        return new ResponseEntity<>(error, HttpStatus.UNAUTHORIZED);
+    }
+
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException ex) {
@@ -105,6 +126,17 @@ public class GlobalExceptionHandler {
         log.error("Database error: {}", ex.getMessage(), ex);
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
     }
+    @ExceptionHandler(FileStorageException.class)
+    public ResponseEntity<ApiError> handleFileStorage(FileStorageException ex) {
+        ApiError error = new ApiError(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(),
+                ex.getMessage()
+        );
+        log.error("File storage error: {}", ex.getMessage(), ex);
+        return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleAll(Exception ex) {
