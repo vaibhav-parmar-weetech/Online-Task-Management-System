@@ -5,6 +5,8 @@ import com.example.Online_Task_Management_System.dto.response.TaskCommentRespons
 import com.example.Online_Task_Management_System.entity.Task;
 import com.example.Online_Task_Management_System.entity.TaskComments;
 import com.example.Online_Task_Management_System.entity.Users;
+import com.example.Online_Task_Management_System.exception.custom.PermissionDeniedException;
+import com.example.Online_Task_Management_System.exception.custom.ResourceNotFoundException;
 import com.example.Online_Task_Management_System.repository.TaskCommentRepository;
 import com.example.Online_Task_Management_System.repository.TaskRepository;
 import com.example.Online_Task_Management_System.repository.UserRepository;
@@ -45,69 +47,85 @@ public class TaskCommentServiceImpl implements TaskCommentService {
 
     @Override
     public ResponseEntity<?> addComment(Long taskId, TaskCommentRequestDto dto) {
-        Users user = getCurrentUser();
+        try {
+            Users user = getCurrentUser();
 
-        Optional<Task> byId = taskRepository.findById(taskId);
-        if (byId.isEmpty()) return new ResponseEntity<>(Map.of("status",400,"message","Task Not Found.."),HttpStatus.NOT_FOUND);
+            Task task = taskRepository.findById(taskId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Task not found with id: " + taskId));
 
-        Task task = byId.get();
-        boolean allowed = task.getUsers().contains(user) || task.getCreatedBy().equals(user);
+            // ✅ Permission check: user assigned or creator
+            boolean allowed = task.getUsers().contains(user) || task.getCreatedBy().equals(user);
+            if (!allowed) {
+                throw new PermissionDeniedException("You are not assigned to this task");
+            }
 
-        if (!allowed) {
-            return new ResponseEntity<>(Map.of("status",403,"message","You are not assigned to this task"),HttpStatus.FORBIDDEN);
+            // ✅ Create and save comment
+            TaskComments comment = new TaskComments();
+            comment.setTask(task);
+            comment.setUser(user);
+            comment.setComment(dto.getComment());
+
+            TaskComments saved = taskCommentRepository.save(comment);
+
+            // ✅ Audit log
+            auditLogService.log(
+                    "TASK_COMMENT_ADDED",
+                    "Comment added to Task ID: " + task.getId(),
+                    "TaskComment",
+                    saved.getId()
+            );
+
+            // ✅ Logging
+            log.info(
+                    "Task Comment Added | taskId={} | commentId={} | commentedBy={} | roles={}",
+                    task.getId(),
+                    saved.getId(),
+                    saved.getUser().getEmail(),
+                    saved.getUser().getRoles().name()
+            );
+
+            return ResponseEntity.ok(Map.of(
+                    "status", 200,
+                    "message", "Comment added successfully"
+            ));
+
+        } catch (ResourceNotFoundException | PermissionDeniedException ex) {
+            throw ex; // handled by GlobalExceptionHandler
+        } catch (Exception ex) {
+            log.error("Failed to add comment | taskId={} | userId={}", taskId, getCurrentUser().getId(), ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "status", 500,
+                            "message", "Failed to add comment"
+                    ));
         }
-
-        TaskComments comment = new TaskComments();
-        comment.setTask(task);
-        comment.setUser(user);
-        comment.setComment(dto.getComment());
-
-        TaskComments saved = taskCommentRepository.save(comment);
-
-        auditLogService.log(
-                "TASK_COMMENT_ADDED",
-                "Comment added to Task ID: " + task.getId(),
-                "TaskComment",
-                saved.getId()
-        );
-
-        log.info(
-                "Task Comment Added | taskId={} | commentId={} | commentedBy={} | role={}",
-                task.getId(),
-                saved.getId(),
-                saved.getUser().getEmail(),
-                saved.getUser().getRoles().name()
-        );
-
-        return ResponseEntity.ok(Map.of("status",200,"message","Comment Added Successfully.."));
     }
+
 
     @Override
     @Transactional(readOnly = true)
     public List<TaskCommentResponseDto> getComments(Long taskId) {
-
         Users user = getCurrentUser();
-
         Task task = taskRepository.findById(taskId)
-                .orElseThrow(() ->
-                        new ResponseStatusException(
-                                HttpStatus.NOT_FOUND, "Task not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found with id: " + taskId));
 
-        boolean allowed =
-                task.getUsers().contains(user)
-                        || task.getCreatedBy().equals(user);
-
+        boolean allowed = task.getUsers().contains(user) || task.getCreatedBy().equals(user);
         if (!allowed) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
-                    "Access denied");
+            throw new PermissionDeniedException("You do not have permission to view comments for this task");
         }
 
-        return taskCommentRepository.findByTaskOrderByCreatedAtAsc(task)
+        List<TaskCommentResponseDto> comments = taskCommentRepository
+                .findByTaskOrderByCreatedAtAsc(task)
                 .stream()
                 .map(this::mapToDto)
                 .toList();
+
+        log.info("Fetched comments | taskId={} | userId={} | commentsCount={}",
+                taskId, user.getId(), comments.size());
+
+        return comments;
     }
+
 
     private TaskCommentResponseDto mapToDto(TaskComments comment) {
         TaskCommentResponseDto dto = new TaskCommentResponseDto();

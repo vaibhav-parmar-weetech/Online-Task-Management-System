@@ -10,6 +10,10 @@ import com.example.Online_Task_Management_System.entity.TaskFile;
 import com.example.Online_Task_Management_System.entity.Users;
 import com.example.Online_Task_Management_System.enums.Roles;
 import com.example.Online_Task_Management_System.enums.TaskStatus;
+import com.example.Online_Task_Management_System.exception.custom.BadRequestException;
+import com.example.Online_Task_Management_System.exception.custom.FileStorageException;
+import com.example.Online_Task_Management_System.exception.custom.ResourceNotFoundException;
+import com.example.Online_Task_Management_System.exception.custom.UnauthorizedException;
 import com.example.Online_Task_Management_System.repository.TaskCommentRepository;
 import com.example.Online_Task_Management_System.repository.TaskFileRepository;
 import com.example.Online_Task_Management_System.repository.TaskRepository;
@@ -79,21 +83,11 @@ public class TaskServiceImpl implements TaskService {
             Users loggedInUser = getLoggedInUser();
 
             if (taskRequestDto.getDueDate().isBefore(LocalDateTime.now())) {
-                return ResponseEntity
-                        .status(HttpStatus.BAD_REQUEST)
-                        .body(Map.of(
-                                "status", 400,
-                                "message", "Please enter a valid due date"
-                        ));
+                throw new BadRequestException("Please enter a valid due date");
             }
 
             if (taskRequestDto.getUserIds() == null || taskRequestDto.getUserIds().isEmpty()) {
-                return ResponseEntity
-                        .status(HttpStatus.BAD_REQUEST)
-                        .body(Map.of(
-                                "status", 400,
-                                "message", "Please assign users"
-                        ));
+                throw new BadRequestException("Please assign users");
             }
 
             Set<Long> requestedUserIds = taskRequestDto.getUserIds();
@@ -108,13 +102,7 @@ public class TaskServiceImpl implements TaskService {
                     .toList();
 
             if (!invalidUserIds.isEmpty()) {
-                return ResponseEntity
-                        .status(HttpStatus.BAD_REQUEST)
-                        .body(Map.of(
-                                "status", 400,
-                                "message", "Invalid user IDs",
-                                "invalidUserIds", invalidUserIds
-                        ));
+                throw new BadRequestException("Invalid user IDs :"+invalidUserIds);
             }
 
             // ✅ Create task
@@ -188,12 +176,7 @@ public class TaskServiceImpl implements TaskService {
 
         } catch (Exception e) {
             log.error("Error creating task", e);
-            return ResponseEntity
-                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of(
-                            "status", 500,
-                            "message", "Something went wrong"
-                    ));
+            throw new RuntimeException(e.getMessage());
         }
     }
 
@@ -219,16 +202,13 @@ public class TaskServiceImpl implements TaskService {
             Optional<Task> oldTask = taskRepository.findById(taskId);
 
             // Checking task is exist or not...
-            if(oldTask.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status",404,"message", "Task Not Found.."));
+            if(oldTask.isEmpty()) throw new ResourceNotFoundException("Task Not Found");
             Task old = oldTask.get();
 
             // Manager restriction
             if (loggedInUser.hasRole(Roles.ROLE_Manager) &&
                     !old.getCreatedBy().getId().equals(loggedInUser.getId())) {
-
-                return new ResponseEntity<>(Map.of("status", 401,
-                        "error", "Unauthorized",
-                        "message","You are not authorized to access this resource"),HttpStatus.UNAUTHORIZED);
+                throw new UnauthorizedException("You are not authorized to access this resource");
             }
 
             StringBuilder auditDesc = new StringBuilder("Updated task fields: ");
@@ -244,9 +224,7 @@ public class TaskServiceImpl implements TaskService {
             // update due date
             if (editTaskDto.getDueDate() != null) {
                 if (editTaskDto.getDueDate().isBefore(LocalDateTime.now())) {
-                    return ResponseEntity
-                            .status(HttpStatus.BAD_REQUEST)
-                            .body(Map.of("status",400,"message", "Please enter a valid due date"));
+                    throw new BadRequestException("Please enter a valid future due date");
 
                 }
 
@@ -323,7 +301,9 @@ public class TaskServiceImpl implements TaskService {
                     .status(HttpStatus.OK)
                     .body(Map.of("status",200,"message", "Task Updated Successfully.."));
 
-        } catch (Exception e) {
+        }catch (UnauthorizedException | ResourceNotFoundException e){
+            throw e;
+        }catch (Exception e) {
             return ResponseEntity
                     .status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("status",500,"message", e.getMessage()));
@@ -337,11 +317,9 @@ public class TaskServiceImpl implements TaskService {
 
         Users loggedInUser = getLoggedInUser();
 
-        Optional<Task> byId = taskRepository.findById(taskId);
-
-        // Checking task is exist or not...
-        if(byId.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status",404,"message", "Task Not Found.."));
-        Task task = byId.get();
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Task not found with id: " + taskId));
 
         // MANAGER permission check
         if (loggedInUser.hasRole(Roles.ROLE_Manager) &&
@@ -350,41 +328,40 @@ public class TaskServiceImpl implements TaskService {
             log.warn("Unauthorized Task Delete | taskId={} | userId={}",
                     taskId, loggedInUser.getId());
 
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of(
-                            "status", 401,
-                            "error", "Unauthorized",
-                            "message", "You are not authorized to access this resource"
-                    ));
+            throw new UnauthorizedException(
+                    "You are not authorized to delete this task");
         }
 
-        //  DELETE COMMENTS
+        // DELETE COMMENTS
         int commentCount = taskCommentRepository.deleteByTaskId(taskId);
         log.info("Deleted {} comments | taskId={}", commentCount, taskId);
 
-        //  DELETE FILES
+        // DELETE FILES (disk + DB)
         List<TaskFile> files = taskFileRepository.findByTaskId(taskId);
 
         for (TaskFile file : files) {
             try {
                 Path path = Paths.get(file.getFilePath());
                 Files.deleteIfExists(path);
+
                 log.info("Deleted task file | fileId={} | name={}",
                         file.getId(), file.getOriginalFileName());
+
             } catch (IOException e) {
-                log.error("Failed to delete file from disk | fileId={}", file.getId(), e);
-                throw new ResponseStatusException(
-                        HttpStatus.INTERNAL_SERVER_ERROR,
-                        "Failed to delete task files");
+                throw new FileStorageException(
+                        "Failed to delete task files from disk", e);
             }
         }
         taskFileRepository.deleteAll(files);
 
+        // REMOVE USER RELATIONS
         task.getUsers().forEach(user -> user.getTasks().remove(task));
         task.getUsers().clear();
 
+        // DELETE TASK
         taskRepository.delete(task);
 
+        // AUDIT LOG
         auditLogService.log(
                 "DELETE_TASK",
                 "Task deleted with files & comments",
@@ -407,17 +384,17 @@ public class TaskServiceImpl implements TaskService {
             Optional<Task> oldTask = taskRepository.findById(taskId);
 
             // Checking task is exist or not...
-            if(oldTask.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status",404,"message", "Task Not Found.."));
+            if(oldTask.isEmpty()) throw new ResourceNotFoundException("task not found.");
             Task task = oldTask.get();
 
             // task map to taskresponseDto
             TaskResponseDto taskResponseDto = mapToDto(task);
 
             return ResponseEntity.ok(taskResponseDto);
-        }catch (Exception e){
-            return ResponseEntity
-                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("status",500,"message", e.getMessage()));
+        }catch (ResourceNotFoundException e){
+            throw e;
+        } catch (Exception e){
+            throw new RuntimeException(e.getMessage());
         }
     }
 
@@ -465,20 +442,25 @@ public class TaskServiceImpl implements TaskService {
     @Override
     public ResponseEntity<?> getAllTask(int page, int size) {
         try {
-            Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+            if (page < 0 || size <= 0) {
+                throw new BadRequestException("Page must be >= 0 and size must be > 0");
+            }
+
+            Pageable pageable = PageRequest.of(
+                    page,
+                    size,
+                    Sort.by("createdAt").descending()
+            );
 
             Page<Task> taskPage = taskRepository.findAll(pageable);
 
             if (taskPage.isEmpty()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status",404,"message", "Task is not Available.."));
+                throw new ResourceNotFoundException("No tasks available");
             }
 
             List<TaskResponseDto> responseDtoList = taskPage.getContent()
                     .stream()
-                    .map(task -> {
-
-                        return mapToDto(task);
-                    })
+                    .map(this::mapToDto)
                     .toList();
 
             PageResponse<TaskResponseDto> pageResponse = new PageResponse<>();
@@ -489,50 +471,59 @@ public class TaskServiceImpl implements TaskService {
             pageResponse.setPageSize(taskPage.getSize());
             pageResponse.setLast(taskPage.isLast());
 
+            log.info("Fetched tasks | page={} | size={} | totalElements={}",
+                    page, size, taskPage.getTotalElements());
+
             return ResponseEntity.ok(pageResponse);
-        }catch (Exception e){
-            return ResponseEntity
-                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("status",500,"message", e.getMessage()));
+
+        }
+        catch (BadRequestException | ResourceNotFoundException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.error("Failed to fetch tasks | page={} | size={}",
+                    page, size, ex);
+
+            throw new RuntimeException("Failed to fetch tasks");
         }
     }
 
+
     @Override
-    public ResponseEntity<?> assignTask(Long taskId, AssignTaskRequestDto assignTaskRequestDto) {
-        try{
-            Users loggedInUser = getLoggedInUser();
+    @Transactional
+    public ResponseEntity<?> assignTask(Long taskId, AssignTaskRequestDto dto) {
 
-            Optional<Task> oldTask = taskRepository.findById(taskId);
+        Users loggedInUser = getLoggedInUser();
 
-            // Checking task is exist or not...
-            if(oldTask.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status",404,"message", "Task Not Found.."));
-            Task task = oldTask.get();
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Task not found with id: " + taskId));
 
-            if (loggedInUser.hasRole(Roles.valueOf("ROLE_Manager")) &&
-                    !task.getCreatedBy().getId().equals(loggedInUser.getId())) {
+        if (loggedInUser.hasRole(Roles.ROLE_Manager) &&
+                !task.getCreatedBy().getId().equals(loggedInUser.getId())) {
 
-                return new ResponseEntity<>(Map.of("status", 401,
-                        "error", "Unauthorized",
-                        "message","You are not authorized to access this resource"),HttpStatus.UNAUTHORIZED);
-            }
+            log.warn("Unauthorized Task Assign | taskId={} | userId={}",
+                    taskId, loggedInUser.getId());
 
-            Set<Users> users = new HashSet<>(
-                    userRepository.findAllById(assignTaskRequestDto.getUserIds())
-            );
+            throw new UnauthorizedException(
+                    "You are not authorized to assign this task");
+        }
 
-            if (users.isEmpty()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status",404,"message", "No Valid User Found..."));
-            }
+        Set<Users> users = new HashSet<>(
+                userRepository.findAllById(dto.getUserIds())
+        );
 
-            // UPDATE BOTH SIDES
-            for (Users user : users) {
-                user.getTasks().add(task);
-            }
-            task.setUsers(users);
-            taskRepository.save(task);
+        if (users.isEmpty()) {
+            throw new ResourceNotFoundException("No valid users found for assignment");
+        }
 
-            // SAVE OWNING SIDE
-            for (Users user : users) {
+        for (Users user : users) {
+            user.getTasks().add(task);
+        }
+        task.setUsers(users);
+        taskRepository.save(task);
+
+        // SEND NOTIFICATIONS
+        users.forEach(user ->
                 webSocketNotificationService.send(
                         user.getEmail(),
                         new TaskNotificationDto(
@@ -542,45 +533,43 @@ public class TaskServiceImpl implements TaskService {
                                 "ASSIGNED",
                                 LocalDateTime.now()
                         )
-                );
-            }
+                )
+        );
 
-            auditLogService.log(
-                    "ASSIGN_TASK",
-                    "Task assigned to users: " + assignTaskRequestDto.getUserIds(),
-                    "Task",
-                    task.getId()
-            );
-            log.info("Task assigned | taskId={} | assignedUsers={}",
-                    taskId, assignTaskRequestDto.getUserIds());
+        // AUDIT LOG
+        auditLogService.log(
+                "ASSIGN_TASK",
+                "Task assigned to users: " + dto.getUserIds(),
+                "Task",
+                task.getId()
+        );
 
+        log.info("Task assigned successfully | taskId={} | assignedUsers={}",
+                taskId, dto.getUserIds());
 
-            return ResponseEntity.ok(mapToDto(task));
-        }catch (Exception e){
-            return ResponseEntity
-                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("status",500,"message", e.getMessage()));
-        }
+        return ResponseEntity.ok(mapToDto(task));
     }
+
 
     @Override
     public ResponseEntity<?> getMyAllTasks(int page, int size) {
-        try{
+        try {
+            if (page < 0 || size <= 0) {
+                throw new BadRequestException("Page must be >= 0 and size must be > 0");
+            }
+
             Users user = getLoggedInUser();
-            Pageable pageable = PageRequest.of(page, size);
+            Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
 
             Page<Task> taskPage = taskRepository.findByUsers_Id(user.getId(), pageable);
 
             if (taskPage.isEmpty()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status",404,"message", "Task Not Found.."));
+                throw new ResourceNotFoundException("No tasks found for the current user");
             }
 
             List<TaskResponseDto> responseDtoList = taskPage.getContent()
                     .stream()
-                    .map(task -> {
-
-                        return mapToDto(task);
-                    })
+                    .map(this::mapToDto)
                     .toList();
 
             PageResponse<TaskResponseDto> pageResponse = new PageResponse<>();
@@ -591,113 +580,177 @@ public class TaskServiceImpl implements TaskService {
             pageResponse.setPageSize(taskPage.getSize());
             pageResponse.setLast(taskPage.isLast());
 
+            log.info("Fetched tasks for user | userId={} | page={} | size={} | totalTasks={}",
+                    user.getId(), page, size, taskPage.getTotalElements());
+
             return ResponseEntity.ok(pageResponse);
-        }catch (Exception e){
-            return ResponseEntity
-                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("status",500,"message", e.getMessage()));
+
+        } catch (BadRequestException | ResourceNotFoundException ex) {
+            throw ex;
+        }catch (Exception ex) {
+            log.error("Failed to fetch tasks for user | page={} | size={}", page, size, ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "status", 500,
+                            "message", "Failed to fetch tasks"
+                    ));
         }
     }
+
 
     @Override
     public ResponseEntity<?> getMyTask(Long taskId) {
-        try{
+        try {
             Users user = getLoggedInUser();
-            Optional<Task> task = taskRepository.findByUsers_IdAndId(user.getId(),taskId);
-            if(task.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status",404,"message", "Task Not Found.."));
-            Task tk = task.get();
-            TaskResponseDto taskResponseDto = mapToDto(tk);
+
+            Task task = taskRepository.findByUsers_IdAndId(user.getId(), taskId)
+                    .orElseThrow(() ->
+                            new ResourceNotFoundException("Task not found with id: " + taskId));
+
+            TaskResponseDto taskResponseDto = mapToDto(task);
+
+            log.info("Fetched task | taskId={} | userId={}", taskId, user.getId());
+
             return ResponseEntity.ok(taskResponseDto);
-        }catch (Exception e){
-            return ResponseEntity
-                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("status",500,"message", e.getMessage()));
+
+        } catch (ResourceNotFoundException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.error("Failed to fetch task | taskId={} | userId={}", taskId, getLoggedInUser().getId(), ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "status", 500,
+                            "message", "Failed to fetch task"
+                    ));
         }
     }
 
+
     @Override
     public ResponseEntity<?> updateTaskStatus(Long taskId, TaskUpdateDto taskUpdateDto) {
-        try{
+        try {
             Users user = getLoggedInUser();
-            Optional<Task> task = taskRepository.findByUsers_IdAndId(user.getId(),taskId);
-            if(task.isEmpty()) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status",404,"message", "Task Not Found.."));
-            Task tk = task.get();
-            String oldStatus = tk.getTaskStatus().name();
-            tk.setTaskStatus(taskUpdateDto.getTaskStatus());
-            Task save = taskRepository.save(tk);
 
-            // Notify creator
+            Task task = taskRepository.findByUsers_IdAndId(user.getId(), taskId)
+                    .orElseThrow(() ->
+                            new ResourceNotFoundException("Task not found with id: " + taskId));
+
+            String oldStatus = task.getTaskStatus().name();
+            task.setTaskStatus(taskUpdateDto.getTaskStatus());
+            Task savedTask = taskRepository.save(task);
+
             webSocketNotificationService.send(
-                    tk.getCreatedBy().getEmail(),
+                    task.getCreatedBy().getEmail(),
                     new TaskNotificationDto(
-                            tk.getId(),
-                            tk.getTitle(),
-                            "Task status changed to " + tk.getTaskStatus(),
+                            task.getId(),
+                            task.getTitle(),
+                            "Task status changed to " + task.getTaskStatus(),
                             "UPDATED",
                             LocalDateTime.now()
                     )
             );
 
-            // Notify assigned users
-            for (Users u : tk.getUsers()) {
+            for (Users u : task.getUsers()) {
+                if (!u.getId().equals(user.getId())) { // optional: skip current user if desired
                     webSocketNotificationService.send(
                             u.getEmail(),
                             new TaskNotificationDto(
-                                    tk.getId(),
-                                    tk.getTitle(),
-                                    "Task status updated to " + tk.getTaskStatus(),
+                                    task.getId(),
+                                    task.getTitle(),
+                                    "Task status updated to " + task.getTaskStatus(),
                                     "UPDATED",
                                     LocalDateTime.now()
                             )
                     );
-
+                }
             }
 
             auditLogService.log(
                     "TASK_STATUS_UPDATE",
-                    "Task status changed from " + oldStatus + " to " + save.getTaskStatus().name(),
+                    "Task status changed from " + oldStatus + " to " + savedTask.getTaskStatus().name(),
                     "Task",
-                    save.getId()
+                    savedTask.getId()
             );
 
-            log.info("Task Status Updated | taskId={} | UpdatedTaskStatus={}",
-                    taskId, taskUpdateDto.getTaskStatus().name());
+            log.info("Task status updated | taskId={} | oldStatus={} | newStatus={}",
+                    taskId, oldStatus, taskUpdateDto.getTaskStatus().name());
 
-            return ResponseEntity.status(HttpStatus.OK).body(Map.of("status",200,"message", "Task Updated Successful.."));
-        }catch (Exception e){
-            return ResponseEntity
-                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("status",500,"message", e.getMessage()));
+            return ResponseEntity.ok(Map.of(
+                    "status", 200,
+                    "message", "Task status updated successfully"
+            ));
+
+        } catch (ResourceNotFoundException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.error("Failed to update task status | taskId={} | userId={}", taskId, getLoggedInUser().getId(), ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "status", 500,
+                            "message", "Failed to update task status"
+                    ));
         }
     }
 
+
     @Override
     public ResponseEntity<PageResponse<TaskResponseDto>> filterdTask(TaskFilterRequest filter, int page, int size) {
+        try {
+            if (page < 0 || size <= 0) {
+                throw new BadRequestException("Page must be >= 0 and size must be > 0");
+            }
 
-        PageResponse<TaskResponseDto> response = new PageResponse<>();
-        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").ascending());
+            Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").ascending());
 
-        Page<Task> taskPage = taskRepository.filterTasks(
-                filter.getStatus(),
-                filter.getDueDate(),
-                filter.getAssignedUserId(),
-                pageable
-        );
+            Page<Task> taskPage = taskRepository.filterTasks(filter.getStatus(), filter.getDueDate(), filter.getAssignedUserId(), pageable);
 
-        List<TaskResponseDto> data = taskPage.getContent()
-                .stream()
-                .map(this::mapToDto)
-                .toList();
+            if (taskPage.isEmpty()) {
+                throw new ResourceNotFoundException("No tasks found for given filter criteria");
+            }
 
-        response.setContent(data);
-        response.setCurrentPage(taskPage.getNumber());
-        response.setTotalPages(taskPage.getTotalPages());
-        response.setTotalElements(taskPage.getTotalElements());
-        return ResponseEntity.ok(response);
+            List<TaskResponseDto> data = taskPage.getContent()
+                    .stream()
+                    .map(this::mapToDto)
+                    .toList();
+
+            PageResponse<TaskResponseDto> response = new PageResponse<>();
+            response.setContent(data);
+            response.setCurrentPage(taskPage.getNumber());
+            response.setTotalPages(taskPage.getTotalPages());
+            response.setTotalElements(taskPage.getTotalElements());
+            response.setPageSize(taskPage.getSize());
+            response.setLast(taskPage.isLast());
+
+            log.info(
+                    "Filtered tasks fetched | page={} | size={} | totalElements={} | filter={}",
+                    page, size, taskPage.getTotalElements(), filter
+            );
+
+            return ResponseEntity.ok(response);
+
+        } catch (BadRequestException | ResourceNotFoundException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.error(
+                    "Failed to filter tasks | page={} | size={} | filter={}",
+                    page, size, filter, ex
+            );
+            throw new RuntimeException("Failed to fetch filtered tasks");
+        }
     }
 
+
     @Override
-    public PageResponse<TaskResponseDto> getMyAllMyTasks(int page, int size, TaskStatus status, LocalDate dueDate) {
+    public PageResponse<TaskResponseDto> getMyAllMyTasks(
+            int page,
+            int size,
+            TaskStatus status,
+            LocalDate dueDate) {
+
+        if (page < 0 || size <= 0) {
+            throw new BadRequestException("Page must be >= 0 and size must be > 0");
+        }
+
         Users user = getLoggedInUser();
 
         Pageable pageable = PageRequest.of(
@@ -713,6 +766,10 @@ public class TaskServiceImpl implements TaskService {
                 pageable
         );
 
+        if (taskPage.isEmpty()) {
+            throw new ResourceNotFoundException("No tasks found for the current user with given filters");
+        }
+
         List<TaskResponseDto> responseDtoList = taskPage.getContent()
                 .stream()
                 .map(this::mapToDto)
@@ -726,8 +783,13 @@ public class TaskServiceImpl implements TaskService {
         pageResponse.setPageSize(taskPage.getSize());
         pageResponse.setLast(taskPage.isLast());
 
+        log.info(
+                "Fetched filtered tasks for user | userId={} | page={} | size={} | status={} | dueDate={} | totalTasks={}",
+                user.getId(), page, size, status, dueDate, taskPage.getTotalElements()
+        );
         return pageResponse;
     }
+
 
 
     private String buildTaskCreatedMessage(Task task, Users user) {
