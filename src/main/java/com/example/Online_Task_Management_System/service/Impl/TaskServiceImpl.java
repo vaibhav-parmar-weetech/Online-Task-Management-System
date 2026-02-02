@@ -174,6 +174,8 @@ public class TaskServiceImpl implements TaskService {
                             "message", "Task created successfully"
                     ));
 
+        }catch (BadRequestException e){
+            throw e;
         } catch (Exception e) {
             log.error("Error creating task", e);
             throw new RuntimeException(e.getMessage());
