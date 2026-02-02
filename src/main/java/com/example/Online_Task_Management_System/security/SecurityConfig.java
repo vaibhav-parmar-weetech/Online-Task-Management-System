@@ -51,6 +51,7 @@ public class SecurityConfig {
                                 .requestMatchers("/ws/**").permitAll()
                                 .requestMatchers("/favicon.ico").permitAll()
                                 .requestMatchers("/api/monitor/**").permitAll()
+                                .requestMatchers("/actuator/health","/actuator/info").permitAll()
                                 .requestMatchers("/actuator/**").permitAll()
 
 
